@@ -18,26 +18,32 @@ import { TasksSidebar } from "@/components/tasks/tasks-sidebar";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useProjects, useReorderTasks, useTags, useTasks } from "@/hooks/use-tasks";
 import {
+  dateRangeForSelection,
   filterForSelection,
   SMART_LISTS,
   type ListSelection,
 } from "@/lib/smart-lists";
+import { useEventsInRange } from "@/hooks/use-calendar";
+import { CalendarItemDetail } from "@/components/calendar/item-detail";
+import { eventToCalendarItem } from "@/lib/calendar-types";
+import type { CalendarEventLite } from "@/lib/calendar-types";
 
 export function TasksView() {
   const [selection, setSelection] = useState<ListSelection>({ type: "smart", key: "today" });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEventLite | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const filter = useMemo(() => filterForSelection(selection), [selection]);
+  const eventRange = useMemo(() => dateRangeForSelection(selection), [selection]);
   const { data: tasks, isLoading } = useTasks(filter);
+  const { data: events } = useEventsInRange(eventRange);
   const { data: projects } = useProjects();
   const { data: tags } = useTags();
   const reorder = useReorderTasks(filter);
 
   // 날짜 기반 리스트는 날짜 그룹 표시, 나머지는 드래그앤드롭 수동 정렬
-  const dateBased =
-    selection.type === "smart" &&
-    ["today", "tomorrow", "next7"].includes(selection.key);
+  const dateBased = eventRange !== null;
   const reorderable =
     !dateBased && !(selection.type === "smart" && selection.key === "done");
 
@@ -122,6 +128,8 @@ export function TasksView() {
             selectedId={selectedTaskId}
             onSelect={setSelectedTaskId}
             groupByDate={dateBased}
+            events={dateBased ? events : undefined}
+            onSelectEvent={setSelectedEvent}
             onReorder={reorderable ? (ids) => reorder.mutate(ids) : undefined}
             emptyMessage={
               selection.type === "smart" && selection.key === "done"
@@ -142,6 +150,12 @@ export function TasksView() {
           />
         </aside>
       )}
+
+      {/* Google 일정 상세 (읽기 전용) */}
+      <CalendarItemDetail
+        item={selectedEvent ? eventToCalendarItem(selectedEvent) : null}
+        onClose={() => setSelectedEvent(null)}
+      />
 
       {/* 모바일: 상세 바텀시트 */}
       {!isDesktop && (

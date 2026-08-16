@@ -25,6 +25,23 @@ export function toAllDayDateString(date: Date): string {
   return utcDayKey(date);
 }
 
+/**
+ * 특정 타임존에서 본 달력 날짜를 "YYYY-MM-DD"로.
+ *
+ * 태스크의 종일 시각은 클라이언트 로컬 자정으로 저장되므로(예: KST 8/20 00:00 =
+ * 2026-08-19T15:00Z) UTC로 읽으면 하루가 밀린다. Google 종일 이벤트로 내보낼 때는
+ * 반드시 사용자 타임존 기준으로 날짜를 뽑아야 한다.
+ */
+export function zonedDateString(date: Date, timeZone: string): string {
+  // en-CA 로케일이 YYYY-MM-DD 형식을 준다
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 /** 이벤트가 걸쳐 있는 날짜 키 목록 (종일은 UTC, 시간 지정은 로컬 기준) */
 export function eventDayKeys(ev: {
   startAt: Date;

@@ -3,9 +3,14 @@
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/actions/auth-helpers";
 import { recordSyncError, syncGoogleCalendar } from "@/lib/google/sync";
+import { backfillTaskEvents } from "@/lib/google/task-push";
 import { CALENDAR_SCOPE, getGrantedScopes } from "@/lib/google/tokens";
 import { taskInclude } from "@/lib/task-types";
-import type { CalendarItem, CalendarSyncInfo } from "@/lib/calendar-types";
+import type {
+  CalendarEventLite,
+  CalendarItem,
+  CalendarSyncInfo,
+} from "@/lib/calendar-types";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -77,10 +82,40 @@ export async function listCalendarItems(
   );
 }
 
+/** 태스크 리스트에 끼워 넣을 Google 일정만 (태스크는 listTasks가 담당) */
+export async function listEventsInRange(
+  fromIso: string,
+  toIso: string,
+): Promise<CalendarEventLite[]> {
+  const userId = await requireUserId();
+  const events = await prisma.calendarEvent.findMany({
+    where: {
+      userId,
+      startAt: { lt: new Date(toIso) },
+      endAt: { gt: new Date(fromIso) },
+    },
+    orderBy: { startAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      startAt: true,
+      endAt: true,
+      allDay: true,
+      location: true,
+      description: true,
+      htmlLink: true,
+    },
+  });
+  return events;
+}
+
 /** 사용자가 동기화 버튼을 눌렀을 때 */
 export async function syncCalendarNow(): Promise<CalendarSyncInfo> {
   const userId = await requireUserId();
   try {
+    // 아직 Google에 안 올라간 태스크를 먼저 올리고 나서 pull해야
+    // 방금 만든 이벤트가 캐시에 중복으로 들어가지 않는다.
+    await backfillTaskEvents(userId);
     await syncGoogleCalendar(userId);
   } catch (err) {
     await recordSyncError(userId, err);

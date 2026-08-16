@@ -23,6 +23,27 @@ export const SMART_LISTS: { key: SmartListKey; label: string }[] = [
   { key: "done", label: "완료됨" },
 ];
 
+/**
+ * 날짜 기반 리스트의 조회 구간. Google 일정을 같이 보여줄 때 쓴다.
+ * 날짜와 무관한 리스트(전체/리스트별/태그별 등)는 null.
+ */
+export function dateRangeForSelection(
+  sel: ListSelection,
+  now = new Date(),
+): { from: Date; to: Date } | null {
+  if (sel.type !== "smart") return null;
+  switch (sel.key) {
+    case "today":
+      return { from: startOfDay(now), to: endOfDay(now) };
+    case "tomorrow":
+      return { from: startOfDay(addDays(now, 1)), to: endOfDay(addDays(now, 1)) };
+    case "next7":
+      return { from: startOfDay(now), to: endOfDay(addDays(now, 6)) };
+    default:
+      return null;
+  }
+}
+
 export function filterForSelection(sel: ListSelection, now = new Date()): TaskFilter {
   if (sel.type === "project") return { kind: "project", projectId: sel.id };
   if (sel.type === "tag") return { kind: "tag", tagId: sel.id };

@@ -115,16 +115,34 @@ export function GoogleSettings({
       <div className="flex items-center justify-between gap-4 p-4">
         <div>
           <Label htmlFor="sync-tasks" className="text-sm font-medium">
-            태스크를 캘린더에 표시
+            태스크를 Google 캘린더에 추가
           </Label>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            시간이 지정된 태스크를 Google 캘린더 일정으로 만듭니다. 종일 태스크는 제외됩니다.
+            날짜가 있는 미완료 태스크를 Google 캘린더 일정으로 만듭니다.
+            완료하거나 날짜를 지우면 캘린더에서도 사라집니다.
           </p>
         </div>
         <Switch
           id="sync-tasks"
           checked={settings?.syncTasksToCalendar ?? true}
           onCheckedChange={(v) => save.mutate({ syncTasksToCalendar: v })}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-4 border-t p-4">
+        <div>
+          <Label htmlFor="sync-allday" className="text-sm font-medium">
+            종일 태스크도 포함
+          </Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            끄면 시간까지 정한 태스크만 캘린더에 올라갑니다.
+          </p>
+        </div>
+        <Switch
+          id="sync-allday"
+          disabled={!(settings?.syncTasksToCalendar ?? true)}
+          checked={settings?.syncAllDayTasks ?? true}
+          onCheckedChange={(v) => save.mutate({ syncAllDayTasks: v })}
         />
       </div>
     </section>

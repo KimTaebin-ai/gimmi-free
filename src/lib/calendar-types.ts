@@ -25,6 +25,33 @@ export type CalendarItem =
       task: TaskWithRelations;
     };
 
+/** 태스크 리스트에 함께 보여줄 Google 일정(읽기 전용) */
+export interface CalendarEventLite {
+  id: string;
+  title: string;
+  startAt: Date;
+  endAt: Date;
+  allDay: boolean;
+  location: string | null;
+  description: string | null;
+  htmlLink: string | null;
+}
+
+/** 리스트에서 고른 일정을 캘린더 상세 시트에 그대로 넘기기 위한 변환 */
+export function eventToCalendarItem(e: CalendarEventLite): CalendarItem {
+  return {
+    kind: "event",
+    id: e.id,
+    title: e.title,
+    startAt: e.startAt,
+    endAt: e.endAt,
+    allDay: e.allDay,
+    location: e.location,
+    description: e.description,
+    htmlLink: e.htmlLink,
+  };
+}
+
 export interface CalendarSyncInfo {
   connected: boolean;
   lastSyncedAt: Date | null;
