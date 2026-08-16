@@ -32,6 +32,7 @@ model User {
   bodyMetrics    BodyMetric[]
   foods          Food[]
   meals          Meal[]
+  growthSummaries GrowthSummary[]
 }
 
 model Account {
@@ -127,9 +128,53 @@ model Task {
   parent   Task?     @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks Task[]    @relation("Subtasks")
   tags     TaskTag[]
+  entries  TaskEntry[]
 
   @@index([userId, status, dueAt])
   @@index([userId, projectId])
+}
+
+/// 태스크에 남기는 기록의 종류.
+/// 수업·토크·세미나처럼 "듣고 배운" 태스크는 스크립트와 느낀 점을 따로 남긴다.
+enum EntryKind {
+  note // 메모
+  script // 수업/발표 스크립트, 강의 내용
+  reflection // 느낀 점, 배운 점
+  link // 참고 자료
+}
+
+model TaskEntry {
+  id        String    @id @default(cuid())
+  taskId    String
+  kind      EntryKind @default(note)
+  title     String?
+  content   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+/// 성장 요약 캐시. "이전에 할 수 없던 걸 할 수 있게 됐는가"를 정리한 결과.
+/// 매번 LLM을 호출하지 않도록 저장해 두고, 새 기록이 생기면 다시 만든다.
+model GrowthSummary {
+  id          String   @id @default(cuid())
+  userId      String
+  /// 요약이 다룬 기간
+  periodStart DateTime
+  periodEnd   DateTime
+  /// 구조화된 결과(capabilities, inProgress, suggestions)
+  content     Json
+  /// 근거가 된 완료 태스크 수 — 새 기록이 쌓였는지 판단용
+  sourceCount Int      @default(0)
+  model       String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model TaskTag {
