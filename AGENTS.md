@@ -42,10 +42,18 @@ src/
     actions/                # "use server" 서버 액션 (tasks, projects, tags …)
     quick-add.ts            # 퀵애드 자연어 파서(한국어 날짜/시간, #태그, !우선순위, 반복)
     smart-lists.ts          # 스마트 리스트 → TaskFilter 변환(날짜는 클라 타임존 기준)
-    google/                 # calendar.ts, gmail.ts — 토큰 refresh 로직 포함 (Phase 2/5)
-  hooks/                    # use-tasks(TanStack Query 훅, 낙관적 업데이트), use-media-query
+    calendar-utils.ts       # [startAt, endAt) 반열린 구간 + 종일=UTC 자정 규칙
+    settings.ts             # User.settings(JSON) 읽기/쓰기
+    google/
+      tokens.ts             # access token 획득 + refresh(만료 시 Account 갱신)
+      calendar.ts           # Calendar REST 클라이언트(fetch 기반, googleapis 미사용)
+      sync.ts               # Google → 로컬 캐시 pull(syncToken 증분, 410 시 전체 폴백)
+      task-push.ts          # 시간 지정 태스크 → Google 이벤트 push(best-effort)
+  hooks/                    # use-tasks, use-calendar, use-media-query
   components/
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
+    calendar/               # calendar-view(월/주/일/목록 전환), month/time-grid/agenda, item-detail
+  app/api/cron/calendar-sync/ # Vercel Cron 15분 주기 pull (vercel.json)
 ```
 
 ## 데이터 모델 (prisma/schema.prisma가 진실. 요약)
@@ -71,9 +79,15 @@ src/
 - Gmail은 **restricted**, Calendar는 **sensitive** scope → OAuth 동의화면을 **Testing** 상태로 두고
   본인 계정을 test user로 등록해 검증 없이 사용. Testing 모드는 refresh token이 7일 만료될 수 있음.
 - refresh_token은 **최초 동의 시에만** 발급 → 반드시 `access_type=offline` + `prompt=consent`.
-- Phase 0은 기본 scope(openid email profile)만 요청. Calendar/Gmail scope는 Phase 2/5에서 추가하고
-  재동의(re-consent)로 토큰 재발급. Cloud Console에서 Calendar API/Gmail API 각각 Enable 필요.
+- scope는 `src/auth.config.ts`의 `GOOGLE_SCOPES` 한 곳에서 관리. Phase 2에서 `auth/calendar` 추가됨
+  (Gmail은 Phase 5). **scope를 늘리면 재로그인(재동의)해야 새 토큰에 반영**된다.
+  Cloud Console에서 Calendar API/Gmail API 각각 Enable 필요.
 - 동기화 충돌은 last-write-wins + `lastSyncedAt` 비교. Google발 이벤트는 앱에서 읽기 전용(기본값).
+- 캘린더 동기화 방향:
+  - **pull**: Google → `CalendarEvent` 캐시. `CalendarSyncState.syncToken`으로 증분, 410이면 전체 재동기화.
+  - **push**: `allDay=false`인 미완료 태스크만 Google 이벤트로. 종일 태스크는 캘린더를 덮으므로 제외.
+    설정(`syncTasksToCalendar`)으로 끌 수 있고, 실패해도 태스크 저장은 성공하도록 `after()` + try/catch.
+  - 태스크가 만든 이벤트는 pull 때 `Task.googleEventId`로 걸러 중복 저장하지 않는다.
 
 ## 개발 규칙
 

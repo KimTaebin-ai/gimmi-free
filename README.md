@@ -22,6 +22,7 @@ npm run dev                 # http://localhost:3000
 | `AUTH_SECRET` | `npx auth secret` 또는 `openssl rand -base64 32` |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth 클라이언트 (아래 설정 참고) |
 | `ALLOWED_EMAILS` | 로그인 허용 이메일(콤마 구분) — 이 목록 밖 계정은 거부 |
+| `CRON_SECRET` | (선택) Vercel Cron 보호용. 설정 시 `/api/cron/*`가 Bearer 검증 |
 
 ## Google OAuth 설정 (1회)
 
@@ -31,7 +32,12 @@ npm run dev                 # http://localhost:3000
    - Authorized redirect URIs에 `http://localhost:3000/api/auth/callback/google`
      (배포 후 `https://<도메인>/api/auth/callback/google` 추가)
 4. 발급된 Client ID/Secret을 `.env`에 입력.
-5. (Phase 2/5에서) Calendar API, Gmail API를 각각 Enable.
+5. **APIs & Services → Library에서 Google Calendar API를 Enable** (Phase 2 필수).
+   Gmail API는 Phase 5에서 추가로 Enable.
+
+> **scope를 늘린 뒤에는 반드시 재로그인**해야 합니다. 기존 토큰에는 새 권한이 없어
+> 캘린더 화면에 "권한 없음" 안내가 뜹니다. 로그아웃 → 다시 Google 로그인 하면
+> `prompt=consent`로 동의 화면이 다시 떠서 새 권한이 담긴 토큰을 받습니다.
 
 ## Vercel 배포
 
