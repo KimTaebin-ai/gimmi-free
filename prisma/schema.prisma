@@ -33,6 +33,7 @@ model User {
   foods          Food[]
   meals          Meal[]
   growthSummaries GrowthSummary[]
+  entries         TaskEntry[]
 }
 
 model Account {
@@ -143,18 +144,28 @@ enum EntryKind {
   link // 참고 자료
 }
 
+/// 기록은 태스크에도, Google 일정에도 붙는다(정확히 한쪽에만).
 model TaskEntry {
   id        String    @id @default(cuid())
-  taskId    String
   kind      EntryKind @default(note)
   title     String?
   content   String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// 태스크에 붙은 기록
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// Google 일정에 붙은 기록.
+  /// 로컬 CalendarEvent 행이 아니라 (userId, googleEventId)에 매단다 —
+  /// 동기화 창을 벗어나 캐시가 정리돼도 사용자가 쓴 메모는 사라지면 안 되기 때문.
+  userId        String?
+  googleEventId String?
+  user          User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([taskId, createdAt])
+  @@index([userId, googleEventId, createdAt])
 }
 
 /// 성장 요약 캐시. "이전에 할 수 없던 걸 할 수 있게 됐는가"를 정리한 결과.

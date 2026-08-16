@@ -13,13 +13,14 @@ import {
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
-  buildTaskColorIndex,
+  buildColorIndex,
   itemAppearance,
   layoutSpans,
   weekSegments,
   type ItemSpan,
-  type TaskColorIndex,
+  type ColorIndex,
 } from "@/components/calendar/shared";
+import { CalendarClock } from "lucide-react";
 import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
@@ -48,7 +49,7 @@ export function MonthView({
   );
 
   const spans = useMemo(() => layoutSpans(items, days), [items, days]);
-  const colorIndex = useMemo(() => buildTaskColorIndex(items), [items]);
+  const colorIndex = useMemo(() => buildColorIndex(items), [items]);
   const weekCount = days.length / 7;
 
   // 레인이 넘쳐 숨겨진 아이템 수를 날짜별로 집계
@@ -113,7 +114,7 @@ function WeekRow({
   weekIndex: number;
   days: Date[];
   spans: ItemSpan[];
-  colorIndex: TaskColorIndex;
+  colorIndex: ColorIndex;
   hidden: number[];
   anchor: Date;
   onSelectItem: (item: CalendarItem) => void;
@@ -195,8 +196,10 @@ function WeekRow({
             >
               {showTitle ? (
                 <>
-                  {seg.item.kind === "task" && (
+                  {seg.item.kind === "task" ? (
                     <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
+                  ) : (
+                    <CalendarClock className="mr-0.5 size-2.5 shrink-0 opacity-60" />
                   )}
                   <span className="truncate">
                     {timed && (

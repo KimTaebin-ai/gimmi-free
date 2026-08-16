@@ -13,6 +13,7 @@ function ev(id: string, start: [number, number], end: [number, number]): Calenda
   return {
     kind: "event",
     id,
+    googleEventId: `g-${id}`,
     title: id,
     // 시간 지정 이벤트로 만들어 로컬 날짜 기준으로 계산되게 한다
     startAt: new Date(2026, start[0] - 1, start[1], 10, 0),

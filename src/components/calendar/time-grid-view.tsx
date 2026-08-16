@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { differenceInMinutes, format, isToday, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
-  buildTaskColorIndex,
+  buildColorIndex,
   groupItemsByDay,
   isMultiDay,
   itemAppearance,
@@ -12,6 +12,7 @@ import {
   layoutSpans,
   weekSegments,
 } from "@/components/calendar/shared";
+import { CalendarClock } from "lucide-react";
 import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
@@ -91,7 +92,7 @@ export function TimeGridView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
-  const colorIndex = buildTaskColorIndex(items);
+  const colorIndex = buildColorIndex(items);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 처음 열 때 오전 7시가 보이도록
@@ -173,8 +174,10 @@ export function TimeGridView({
                 >
                   {seg.isStart || seg.isEnd ? (
                     <>
-                      {seg.item.kind === "task" && (
+                      {seg.item.kind === "task" ? (
                         <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
+                      ) : (
+                        <CalendarClock className="mr-0.5 size-2.5 shrink-0 opacity-60" />
                       )}
                       <span className="truncate">{seg.item.title}</span>
                     </>
@@ -250,8 +253,10 @@ export function TimeGridView({
                     )}
                   >
                     <span className="flex min-w-0 items-center gap-0.5 font-medium">
-                      {p.item.kind === "task" && (
+                      {p.item.kind === "task" ? (
                         <PriorityFlag priority={p.item.priority} className="size-2.5" />
+                      ) : (
+                        <CalendarClock className="size-2.5 shrink-0 opacity-60" />
                       )}
                       <span className="truncate">{p.item.title}</span>
                     </span>

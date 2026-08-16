@@ -6,6 +6,8 @@ import { CalendarDays, ExternalLink, MapPin } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { TaskDetail } from "@/components/tasks/task-detail";
+import { TaskEntries } from "@/components/tasks/task-entries";
+import { Separator } from "@/components/ui/separator";
 import { formatAllDay } from "@/lib/calendar-utils";
 import type { CalendarItem } from "@/lib/calendar-types";
 
@@ -47,8 +49,14 @@ function EventDetail({ item }: { item: Extract<CalendarItem, { kind: "event" }> 
         </a>
       )}
       <p className="text-xs text-muted-foreground">
-        Google에서 만든 일정은 앱에서 읽기 전용입니다.
+        일정 자체는 Google에서 관리되어 앱에서 수정할 수 없지만, 메모·스크립트·느낀 점은
+        여기에 남길 수 있어요. 남긴 기록은 성장 요약의 근거로 함께 읽힙니다.
       </p>
+
+      <Separator />
+
+      {/* 일정에도 기록을 붙인다 — 세미나·수업이 Google 일정으로 들어오는 경우가 많다 */}
+      <TaskEntries target={{ type: "event", googleEventId: item.googleEventId }} />
     </div>
   );
 }
@@ -64,7 +72,7 @@ export function CalendarItemDetail({
     <Sheet open={!!item} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="bottom"
-        className="h-[70dvh] p-0 lg:inset-y-0 lg:right-0 lg:h-full lg:w-96"
+        className="h-[85dvh] overflow-y-auto p-0 lg:inset-y-0 lg:right-0 lg:h-full lg:w-96"
       >
         <SheetTitle className="sr-only">일정 상세</SheetTitle>
         {item?.kind === "event" && <EventDetail item={item} />}

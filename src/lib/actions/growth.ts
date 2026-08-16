@@ -56,7 +56,7 @@ export async function loadGrowthSummary(): Promise<GrowthResponse> {
   }
 
   const input = await collectGrowthInput(userId);
-  if (input.tasks.length === 0) {
+  if (input.sources.length === 0) {
     return {
       ok: false,
       error: {
@@ -70,7 +70,7 @@ export async function loadGrowthSummary(): Promise<GrowthResponse> {
     ok: false,
     error: {
       reason: "no_data",
-      message: `${input.tasks.length}건의 기록이 준비됐어요. "요약 만들기"를 눌러 정리해 보세요.`,
+      message: `${input.sources.length}건의 기록이 준비됐어요. "요약 만들기"를 눌러 정리해 보세요.`,
     },
   };
 }
@@ -90,7 +90,7 @@ export async function refreshGrowthSummary(): Promise<GrowthResponse> {
   }
 
   const input = await collectGrowthInput(userId);
-  if (input.tasks.length === 0) {
+  if (input.sources.length === 0) {
     return {
       ok: false,
       error: {
@@ -114,7 +114,7 @@ export async function refreshGrowthSummary(): Promise<GrowthResponse> {
         periodStart: input.periodStart,
         periodEnd: input.periodEnd,
         content,
-        sourceCount: input.tasks.length,
+        sourceCount: input.sources.length,
         model: CLAUDE_MODEL,
       },
     });
@@ -147,6 +147,6 @@ function explainApiError(err: unknown): string {
 /** 요약 근거가 될 기록이 얼마나 쌓였는지 (버튼 안내용) */
 export async function getGrowthSourceCount(): Promise<number> {
   const userId = await requireUserId();
-  const { tasks } = await collectGrowthInput(userId);
-  return tasks.length;
+  const { sources } = await collectGrowthInput(userId);
+  return sources.length;
 }

@@ -2,10 +2,10 @@
 
 import { format, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
-import { CheckSquare, Clock, MapPin } from "lucide-react";
+import { CalendarClock, CheckSquare, Clock, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  buildTaskColorIndex,
+  buildColorIndex,
   groupItemsByDay,
   itemDotStyle,
 } from "@/components/calendar/shared";
@@ -20,7 +20,7 @@ export function AgendaView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
-  const colorIndex = buildTaskColorIndex(items);
+  const colorIndex = buildColorIndex(items);
   const days = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   if (days.length === 0) {
@@ -72,8 +72,10 @@ export function AgendaView({
                           "text-muted-foreground line-through",
                       )}
                     >
-                      {item.kind === "task" && (
+                      {item.kind === "task" ? (
                         <PriorityFlag priority={item.priority} className="size-3" />
+                      ) : (
+                        <CalendarClock className="size-3 shrink-0 text-muted-foreground" />
                       )}
                       <span className="truncate">{item.title}</span>
                     </div>

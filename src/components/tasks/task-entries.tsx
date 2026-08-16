@@ -14,6 +14,7 @@ import {
   deleteEntry,
   listEntries,
   updateEntry,
+  type EntryTarget,
 } from "@/lib/actions/entries";
 import type { EntryKind } from "@/generated/prisma/enums";
 
@@ -44,15 +45,19 @@ const KINDS: {
   { value: "link", label: "자료", icon: Link2, placeholder: "참고한 링크나 출처" },
 ];
 
-export function TaskEntries({ taskId }: { taskId: string }) {
+/** 태스크와 Google 일정 양쪽에서 쓰는 기록 섹션 */
+export function TaskEntries({ target }: { target: EntryTarget }) {
   const qc = useQueryClient();
+  const key =
+    target.type === "task" ? ["entries", "task", target.taskId] : ["entries", "event", target.googleEventId];
+
   const { data: entries, isLoading } = useQuery({
-    queryKey: ["entries", taskId],
-    queryFn: () => listEntries(taskId),
+    queryKey: key,
+    queryFn: () => listEntries(target),
   });
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["entries", taskId] });
+    qc.invalidateQueries({ queryKey: key });
     // 요약 근거가 바뀌므로 함께 갱신
     qc.invalidateQueries({ queryKey: ["growth-source-count"] });
   };
@@ -80,7 +85,7 @@ export function TaskEntries({ taskId }: { taskId: string }) {
   function submit() {
     if (!composerKind || !draftContent.trim()) return;
     add.mutate(
-      { taskId, kind: composerKind, title: draftTitle || null, content: draftContent },
+      { target, kind: composerKind, title: draftTitle || null, content: draftContent },
       {
         onSuccess: () => {
           setDraftTitle("");

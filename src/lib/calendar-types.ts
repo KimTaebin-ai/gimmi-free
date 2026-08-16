@@ -5,6 +5,8 @@ export type CalendarItem =
   | {
       kind: "event";
       id: string;
+      /** Google 쪽 식별자 — 메모(TaskEntry)를 매다는 앵커 */
+      googleEventId: string;
       title: string;
       startAt: Date;
       endAt: Date;
@@ -28,6 +30,7 @@ export type CalendarItem =
 /** 태스크 리스트에 함께 보여줄 Google 일정(읽기 전용) */
 export interface CalendarEventLite {
   id: string;
+  googleEventId: string;
   title: string;
   startAt: Date;
   endAt: Date;
@@ -42,6 +45,7 @@ export function eventToCalendarItem(e: CalendarEventLite): CalendarItem {
   return {
     kind: "event",
     id: e.id,
+    googleEventId: e.googleEventId,
     title: e.title,
     startAt: e.startAt,
     endAt: e.endAt,

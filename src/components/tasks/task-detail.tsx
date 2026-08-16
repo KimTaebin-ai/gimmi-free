@@ -294,7 +294,7 @@ export function TaskDetail({
         />
 
         {/* 메모 / 수업 스크립트 / 느낀 점 */}
-        <TaskEntries taskId={task.id} />
+        <TaskEntries target={{ type: "task", taskId: task.id }} />
 
         {/* 서브태스크 */}
         <div className="space-y-1">

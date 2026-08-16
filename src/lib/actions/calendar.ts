@@ -49,6 +49,7 @@ export async function listCalendarItems(
   const eventItems: CalendarItem[] = events.map((e) => ({
     kind: "event",
     id: e.id,
+    googleEventId: e.googleEventId,
     title: e.title,
     startAt: e.startAt,
     endAt: e.endAt,
@@ -97,6 +98,7 @@ export async function listEventsInRange(
     orderBy: { startAt: "asc" },
     select: {
       id: true,
+      googleEventId: true,
       title: true,
       startAt: true,
       endAt: true,

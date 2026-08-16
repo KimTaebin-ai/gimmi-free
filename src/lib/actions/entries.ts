@@ -7,16 +7,31 @@ import type { Prisma } from "@/generated/prisma/client";
 
 export type TaskEntryRow = Prisma.TaskEntryGetPayload<object>;
 
-export async function listEntries(taskId: string): Promise<TaskEntryRow[]> {
+/**
+ * 기록이 붙는 대상. 태스크이거나 Google 일정이다.
+ * 일정은 로컬 캐시 행이 아니라 googleEventId로 가리켜서,
+ * 동기화로 캐시가 정리돼도 메모가 남는다.
+ */
+export type EntryTarget =
+  | { type: "task"; taskId: string }
+  | { type: "event"; googleEventId: string };
+
+function whereFor(target: EntryTarget, userId: string): Prisma.TaskEntryWhereInput {
+  return target.type === "task"
+    ? { taskId: target.taskId, task: { userId } }
+    : { userId, googleEventId: target.googleEventId };
+}
+
+export async function listEntries(target: EntryTarget): Promise<TaskEntryRow[]> {
   const userId = await requireUserId();
   return prisma.taskEntry.findMany({
-    where: { taskId, task: { userId } },
+    where: whereFor(target, userId),
     orderBy: { createdAt: "asc" },
   });
 }
 
 export async function createEntry(input: {
-  taskId: string;
+  target: EntryTarget;
   kind: EntryKind;
   title?: string | null;
   content: string;
@@ -25,16 +40,25 @@ export async function createEntry(input: {
   const content = input.content.trim();
   if (!content) throw new Error("내용이 비어 있습니다");
 
-  // 소유권 확인 (다른 사용자의 태스크에 기록을 붙이지 못하도록)
-  await prisma.task.findFirstOrThrow({ where: { id: input.taskId, userId } });
+  const base = {
+    kind: input.kind,
+    title: input.title?.trim() || null,
+    content,
+  };
+
+  if (input.target.type === "task") {
+    // 소유권 확인 (다른 사용자의 태스크에 기록을 붙이지 못하도록)
+    await prisma.task.findFirstOrThrow({
+      where: { id: input.target.taskId, userId },
+      select: { id: true },
+    });
+    return prisma.taskEntry.create({
+      data: { ...base, taskId: input.target.taskId },
+    });
+  }
 
   return prisma.taskEntry.create({
-    data: {
-      taskId: input.taskId,
-      kind: input.kind,
-      title: input.title?.trim() || null,
-      content,
-    },
+    data: { ...base, userId, googleEventId: input.target.googleEventId },
   });
 }
 
@@ -44,7 +68,7 @@ export async function updateEntry(
 ): Promise<TaskEntryRow> {
   const userId = await requireUserId();
   const existing = await prisma.taskEntry.findFirstOrThrow({
-    where: { id, task: { userId } },
+    where: { id, OR: [{ task: { userId } }, { userId }] },
     select: { id: true },
   });
   return prisma.taskEntry.update({
@@ -59,5 +83,7 @@ export async function updateEntry(
 
 export async function deleteEntry(id: string): Promise<void> {
   const userId = await requireUserId();
-  await prisma.taskEntry.deleteMany({ where: { id, task: { userId } } });
+  await prisma.taskEntry.deleteMany({
+    where: { id, OR: [{ task: { userId } }, { userId }] },
+  });
 }

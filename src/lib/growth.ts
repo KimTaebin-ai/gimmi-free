@@ -22,24 +22,37 @@ const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리�
 - "무엇을 했는가"가 아니라 "무엇을 할 수 있게 되었는가"를 쓰세요.
 - 근거 없이 추측하지 마세요. 기록에서 드러나지 않으면 gained에 넣지 않습니다.
 - 반복 업무나 유지 활동은 솔직하게 notGrowth에 넣으세요. 억지로 성장으로 포장하지 마세요.
-- 사용자가 남긴 메모·스크립트·느낀 점이 가장 중요한 근거입니다. 제목만 있는 태스크는 근거가 약합니다.
+- 사용자가 남긴 메모·스크립트·느낀 점이 가장 중요한 근거입니다.
+  제목만 있고 기록이 없는 항목("남긴 기록 없음"으로 표시됨)은 근거가 약하니 단정하지 마세요.
+- 자료에는 [태스크]와 [일정](Google 캘린더에서 온 수업·세미나·미팅)이 섞여 있습니다.
+  둘을 동등한 근거로 취급하세요 — 수업이나 세미나에서 배운 것도 성장입니다.
 - 한국어로, 담백하게 씁니다. 칭찬이나 격려보다 정확한 관찰이 필요합니다.
 - 기록이 빈약하면 gained를 비우고 그 사실을 headline에 적으세요.`;
 
-interface TaskForPrompt {
+interface EntryForPrompt {
+  kind: string;
+  title: string | null;
+  content: string;
+}
+
+/** 태스크와 Google 일정을 같은 형태로 다룬다 — 둘 다 성장의 근거가 된다 */
+interface SourceForPrompt {
+  origin: "task" | "event";
   title: string;
-  completedAt: Date | null;
+  at: Date | null;
   project: string | null;
   tags: string[];
   note: string | null;
-  entries: { kind: string; title: string | null; content: string }[];
+  entries: EntryForPrompt[];
 }
 
-function renderTasks(tasks: TaskForPrompt[]): string {
-  return tasks
+function renderSources(sources: SourceForPrompt[]): string {
+  return sources
     .map((t, i) => {
-      const parts = [`## ${i + 1}. ${t.title}`];
-      if (t.completedAt) parts.push(`완료일: ${t.completedAt.toISOString().slice(0, 10)}`);
+      const label = t.origin === "event" ? "[일정]" : "[태스크]";
+      const parts = [`## ${i + 1}. ${label} ${t.title}`];
+      if (t.at) parts.push(`날짜: ${t.at.toISOString().slice(0, 10)}`);
+      if (t.entries.length === 0) parts.push("(남긴 기록 없음 — 근거가 약함)");
       if (t.project) parts.push(`리스트: ${t.project}`);
       if (t.tags.length) parts.push(`태그: ${t.tags.join(", ")}`);
       if (t.note) parts.push(`메모: ${t.note.slice(0, MAX_ENTRY_CHARS)}`);
@@ -58,7 +71,7 @@ function renderTasks(tasks: TaskForPrompt[]): string {
 }
 
 export interface GrowthInput {
-  tasks: TaskForPrompt[];
+  sources: SourceForPrompt[];
   periodStart: Date;
   periodEnd: Date;
 }
@@ -69,39 +82,84 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
   const periodStart = new Date(periodEnd);
   periodStart.setDate(periodStart.getDate() - LOOKBACK_DAYS);
 
-  const rows = await prisma.task.findMany({
+  const [taskRows, eventRows] = await Promise.all([
+    prisma.task.findMany({
+      where: {
+        userId,
+        OR: [
+          { status: "done", completedAt: { gte: periodStart } },
+          // 완료하지 않았어도 기록을 남긴 태스크는 근거가 된다
+          { entries: { some: { createdAt: { gte: periodStart } } } },
+        ],
+      },
+      include: {
+        project: { select: { name: true } },
+        tags: { include: { tag: { select: { name: true } } } },
+        entries: {
+          orderBy: { createdAt: "asc" },
+          select: { kind: true, title: true, content: true },
+        },
+      },
+      orderBy: { completedAt: "desc" },
+      take: MAX_TASKS,
+    }),
+    // Google 일정도 근거다 — 수업·세미나·미팅은 대개 일정으로 들어온다
+    prisma.calendarEvent.findMany({
+      where: { userId, startAt: { gte: periodStart, lte: periodEnd } },
+      orderBy: { startAt: "desc" },
+      take: MAX_TASKS,
+      select: {
+        googleEventId: true,
+        title: true,
+        description: true,
+        startAt: true,
+      },
+    }),
+  ]);
+
+  // 일정에 붙은 기록을 한 번에 가져와 이벤트별로 묶는다
+  const eventEntries = await prisma.taskEntry.findMany({
     where: {
       userId,
-      OR: [
-        { status: "done", completedAt: { gte: periodStart } },
-        // 완료하지 않았어도 기록을 남긴 태스크는 근거가 된다
-        { entries: { some: { createdAt: { gte: periodStart } } } },
-      ],
+      googleEventId: { in: eventRows.map((e) => e.googleEventId) },
     },
-    include: {
-      project: { select: { name: true } },
-      tags: { include: { tag: { select: { name: true } } } },
-      entries: {
-        orderBy: { createdAt: "asc" },
-        select: { kind: true, title: true, content: true },
-      },
-    },
-    orderBy: { completedAt: "desc" },
-    take: MAX_TASKS,
+    orderBy: { createdAt: "asc" },
+    select: { googleEventId: true, kind: true, title: true, content: true },
   });
+  const byEvent = new Map<string, EntryForPrompt[]>();
+  for (const e of eventEntries) {
+    if (!e.googleEventId) continue;
+    const list = byEvent.get(e.googleEventId);
+    if (list) list.push(e);
+    else byEvent.set(e.googleEventId, [e]);
+  }
 
-  return {
-    periodStart,
-    periodEnd,
-    tasks: rows.map((t) => ({
-      title: t.title,
-      completedAt: t.completedAt,
-      project: t.project?.name ?? null,
-      tags: t.tags.map((x) => x.tag.name),
-      note: t.note,
-      entries: t.entries,
-    })),
-  };
+  const taskSources: SourceForPrompt[] = taskRows.map((t) => ({
+    origin: "task",
+    title: t.title,
+    at: t.completedAt,
+    project: t.project?.name ?? null,
+    tags: t.tags.map((x) => x.tag.name),
+    note: t.note,
+    entries: t.entries,
+  }));
+
+  const eventSources: SourceForPrompt[] = eventRows.map((e) => ({
+    origin: "event",
+    title: e.title,
+    at: e.startAt,
+    project: null,
+    tags: [],
+    note: e.description,
+    entries: byEvent.get(e.googleEventId) ?? [],
+  }));
+
+  // 기록이 있는 것을 먼저 — 프롬프트 앞쪽에 근거가 강한 항목이 오도록
+  const sources = [...taskSources, ...eventSources]
+    .sort((a, b) => b.entries.length - a.entries.length)
+    .slice(0, MAX_TASKS);
+
+  return { periodStart, periodEnd, sources };
 }
 
 /**
@@ -112,7 +170,7 @@ export async function generateGrowthSummary(
   input: GrowthInput,
 ): Promise<GrowthSummaryContent | null> {
   const client = getClaude();
-  if (!client || input.tasks.length === 0) return null;
+  if (!client || input.sources.length === 0) return null;
 
   const period = `${input.periodStart.toISOString().slice(0, 10)} ~ ${input.periodEnd
     .toISOString()
@@ -126,7 +184,7 @@ export async function generateGrowthSummary(
     messages: [
       {
         role: "user",
-        content: `기간: ${period}\n아래는 이 기간의 태스크와 기록입니다. 이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderTasks(input.tasks)}`,
+        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}`,
       },
     ],
   });

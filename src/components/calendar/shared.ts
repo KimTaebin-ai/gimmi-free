@@ -39,47 +39,43 @@ export function itemsForDay(
 }
 
 /**
- * 태스크마다 식별 색을 배정한다(목록 화면과 같은 규칙).
- * 시작 시각 순으로 번호를 매기므로 시간상 이웃한 태스크는 항상 다른 색이 된다.
- * Google 일정은 팔레트를 쓰지 않는다 — 색은 "어떤 태스크인지"만 나타내고,
- * 내 태스크와 외부 일정은 색이 아니라 스타일(회색 채움 + 왼쪽 테두리)로 구분한다.
+ * 캘린더에 보이는 모든 아이템에 식별 색을 배정한다 — 내 태스크든 Google 일정이든.
+ * Google 일정도 중요한 정보이므로 색을 죽이지 않는다.
+ *
+ * 시작 시각 순으로 팔레트를 돌려 쓰므로 시간상 이웃한 항목은 항상 다른 색이 된다.
+ * 태스크와 일정을 한 줄에 세워 번호를 매기기 때문에 둘 사이에서도 색이 겹치지 않는다.
+ * 종류 구분은 색이 아니라 아이콘이 맡는다(태스크=우선순위 깃발, 일정=캘린더 아이콘).
  */
-export type TaskColorIndex = Map<string, number>;
+export type ColorIndex = Map<string, number>;
 
-export function buildTaskColorIndex(items: CalendarItem[]): TaskColorIndex {
-  const tasks = items
-    .filter((i) => i.kind === "task")
-    .sort(
-      (a, b) => a.startAt.getTime() - b.startAt.getTime() || a.id.localeCompare(b.id),
-    );
-  return new Map(tasks.map((t, i) => [t.id, i]));
+/** 같은 아이템을 두 뷰에서 같은 색으로 그리기 위한 키 */
+export function itemKey(item: CalendarItem): string {
+  return `${item.kind}:${item.id}`;
 }
 
-/** 배경/글자 색 클래스 (Google 일정) 또는 인라인 스타일로 쓸 색 (태스크) */
+export function buildColorIndex(items: CalendarItem[]): ColorIndex {
+  const sorted = [...items].sort(
+    (a, b) => a.startAt.getTime() - b.startAt.getTime() || itemKey(a).localeCompare(itemKey(b)),
+  );
+  return new Map(sorted.map((it, i) => [itemKey(it), i]));
+}
+
 export interface ItemAppearance {
   className: string;
-  /** 태스크일 때만 — CSS 변수 색 */
+  /** 식별 색 (CSS 변수). 완료된 태스크만 색 없이 흐리게 처리한다. */
   color?: string;
 }
 
 export function itemAppearance(
   item: CalendarItem,
-  colorIndex?: TaskColorIndex,
+  colorIndex?: ColorIndex,
 ): ItemAppearance {
-  if (item.kind === "event") {
-    // 외부 일정: 무채색 + 왼쪽 테두리. 팔레트 색을 쓰지 않아 태스크와 혼동되지 않는다.
-    return {
-      className:
-        "bg-muted/70 text-muted-foreground border-l-2 border-muted-foreground/40",
-    };
-  }
-  if (item.status === "done") {
+  if (item.kind === "task" && item.status === "done") {
     return { className: "bg-muted text-muted-foreground line-through opacity-70" };
   }
-  const index = colorIndex?.get(item.id) ?? 0;
   return {
     className: "text-foreground",
-    color: taskColorVar(index),
+    color: taskColorVar(colorIndex?.get(itemKey(item)) ?? 0),
   };
 }
 
@@ -173,14 +169,14 @@ export function weekSegments(spans: ItemSpan[], weekIndex: number): WeekSegment[
   return out;
 }
 
-/** 목록(아젠다) 뷰의 점 — 태스크는 식별 색, 일정은 무채색 */
+/** 목록(아젠다) 뷰의 점 — 태스크·일정 모두 식별 색을 쓴다 */
 export function itemDotStyle(
   item: CalendarItem,
-  colorIndex?: TaskColorIndex,
+  colorIndex?: ColorIndex,
 ): { className: string; color?: string } {
-  if (item.kind === "event") return { className: "bg-muted-foreground/50" };
-  if (item.status === "done") return { className: "bg-muted-foreground/30" };
-  return { className: "", color: taskColorVar(colorIndex?.get(item.id) ?? 0) };
+  if (item.kind === "task" && item.status === "done")
+    return { className: "bg-muted-foreground/30" };
+  return { className: "", color: taskColorVar(colorIndex?.get(itemKey(item)) ?? 0) };
 }
 
 /** 여러 날에 걸친 아이템인지 */
