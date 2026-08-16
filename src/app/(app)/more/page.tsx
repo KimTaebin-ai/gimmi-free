@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ChevronRight, Mail, Salad, Settings, Sun } from "lucide-react";
+import { ChevronRight, Mail, Newspaper, Salad, Settings, Sun } from "lucide-react";
 
 const links = [
   { href: "/today", label: "오늘", icon: Sun, desc: "오늘 할 일과 일정만 모아 보기" },
+  { href: "/blog", label: "블로그", icon: Newspaper, desc: "네이버 블로그에 쓴 글 모아 보기" },
   { href: "/diet", label: "식단", icon: Salad, desc: "Phase 4에서 구현" },
   { href: "/mail", label: "메일", icon: Mail, desc: "Phase 5에서 구현" },
   { href: "/settings", label: "설정", icon: Settings, desc: "시간대, Google 연동" },

@@ -8,6 +8,7 @@ import {
   Dumbbell,
   LayoutList,
   MoreHorizontal,
+  Newspaper,
   Salad,
   Sparkles,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const items = [
   { href: "/calendar", label: "캘린더", icon: CalendarDays },
   { href: "/fitness", label: "피트니스", icon: Dumbbell },
   { href: "/diet", label: "식단", icon: Salad },
+  { href: "/blog", label: "블로그", icon: Newspaper },
   { href: "/more", label: "더보기", icon: MoreHorizontal },
 ];
 

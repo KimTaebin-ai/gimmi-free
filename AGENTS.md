@@ -52,6 +52,9 @@ src/
       calendar.ts           # Calendar REST 클라이언트(fetch 기반, googleapis 미사용)
       sync.ts               # Google → 로컬 캐시 pull(syncToken 증분, 410 시 전체 폴백)
       task-push.ts          # 시간 지정 태스크 → Google 이벤트 push(best-effort)
+    naver/
+      rss.ts                # 네이버 블로그 RSS 파서(순수 함수, 실제 피드 픽스처로 테스트)
+      sync.ts               # RSS → BlogPost upsert
   hooks/                    # use-tasks, use-calendar, use-media-query
   components/
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
@@ -75,6 +78,8 @@ src/
 - **WorkoutRoutine / RoutineExercise / Workout / WorkoutSet**(`exerciseOrder`로 종목 순서 유지)
 - **BodyMetric** — 날짜별 체중/골격근량/체지방률
 - **Food / Meal / MealItem** — 끼니(type: breakfast|lunch|dinner|snack) + 매크로
+- **BlogPost** — 네이버 블로그에서 불러온 글. `(userId, logNo)`가 중복 판별 키.
+  본문은 저장하지 않고 원문 링크로 연결한다.
 
 ## 환경변수 (.env — 커밋 금지, .env.example 참고)
 
@@ -83,6 +88,7 @@ src/
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — Google Cloud OAuth 클라이언트
 - `ALLOWED_EMAILS` — 로그인 허용 이메일(콤마 구분). 화이트리스트 밖 계정은 로그인 거부.
 - `ANTHROPIC_API_KEY` — 홈 화면 성장 요약용. 없으면 앱은 정상 동작하고 그 화면만 안내를 띄운다.
+- `NAVER_BLOG_ID` — 네이버 블로그 아이디. RSS만 쓰므로 인증 불필요.
 - `AUTH_URL` — 배포 시 프로덕션 URL(Vercel에선 보통 자동 감지)
 
 ## Google OAuth 주의사항
@@ -147,6 +153,18 @@ src/
     종류 구분(내 태스크 vs 외부 일정)은 캘린더 아이콘이 맡는다.
   - 우선순위 색은 validate_palette로 라이트/다크 both all-pairs 통과를 확인했다.
     다크에서 기본 red(#e66767)는 amber와 ΔE 13으로 실패해 #d94a6a로 옮겼다 — 바꾸지 말 것.
+
+## 네이버 블로그 주의사항
+
+- 네이버에는 **내 글 목록을 주는 공식 read API가 없다.** 로그인 오픈API는 *쓰기*만 있고,
+  검색 API는 키워드 기반이라 전량 보장이 안 된다. 그래서 **RSS가 사실상 유일한 정식 경로**다.
+  - 피드: `https://rss.blog.naver.com/{blogId}.xml` — 인증 불필요, **최근 글만**.
+  - 블로그에 공개 글이 있어도 **블로그 설정에서 RSS가 꺼져 있으면 빈 채널**이 온다
+    (HTTP 200 + item 0개). 이 경우를 오류가 아니라 "설정 확인" 안내로 다룰 것.
+- **본문 스크래핑 금지.** 네이버 본문은 `PostView.naver` iframe 안이라 파싱이 취약하고
+  ToS 위험이 있다. 카드에는 RSS `description` 요약만 쓰고 본문은 원문 링크로 연결한다.
+- 파서는 필드 누락에 방어적으로: `guid`(추적 파라미터 없는 URL) 우선, 없으면 `link`에서
+  쿼리를 떼고 마지막 숫자 세그먼트를 `logNo`로 쓴다.
 
 ## 로컬 개발
 

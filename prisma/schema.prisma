@@ -34,6 +34,7 @@ model User {
   meals          Meal[]
   growthSummaries GrowthSummary[]
   entries         TaskEntry[]
+  blogPosts       BlogPost[]
 }
 
 model Account {
@@ -235,6 +236,37 @@ model CalendarSyncState {
   lastError      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Blog (네이버 블로그 불러오기) ----------
+
+enum BlogSource {
+  rss
+  search
+}
+
+/// 네이버 블로그에서 불러온 글. 본문은 저장하지 않고 원문 링크로 연결한다
+/// (네이버 본문은 iframe 안에 있어 파싱이 취약하고 ToS 위험이 있음).
+model BlogPost {
+  id           String     @id @default(cuid())
+  userId       String
+  blogId       String
+  /// 글 고유 번호(URL 마지막 숫자 세그먼트). 중복 판별 키.
+  logNo        String
+  title        String
+  url          String
+  summary      String?
+  thumbnailUrl String?
+  category     String?
+  tags         String[]   @default([])
+  publishedAt  DateTime
+  source       BlogSource @default(rss)
+  fetchedAt    DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, logNo])
+  @@index([userId, publishedAt])
 }
 
 // ---------- Fitness ----------
