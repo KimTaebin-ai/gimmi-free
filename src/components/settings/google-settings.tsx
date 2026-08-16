@@ -12,7 +12,16 @@ import { cn } from "@/lib/utils";
 import { useCalendarSyncInfo, useSyncCalendar } from "@/hooks/use-calendar";
 import { loadSettings, updateSettings } from "@/lib/actions/settings";
 
-export function GoogleSettings() {
+/** scope URI에서 사람이 읽을 이름만 */
+function scopeLabel(scope: string): string {
+  return scope.replace("https://www.googleapis.com/auth/", "");
+}
+
+export function GoogleSettings({
+  reconnectAction,
+}: {
+  reconnectAction: () => Promise<void>;
+}) {
   const { data: info } = useCalendarSyncInfo();
   const sync = useSyncCalendar();
   const qc = useQueryClient();
@@ -39,12 +48,11 @@ export function GoogleSettings() {
           ) : (
             <>
               <XCircle className="size-4 text-amber-500" />
-              <span className="text-muted-foreground">
-                캘린더 권한 없음 — 로그아웃 후 다시 로그인해 동의해 주세요
-              </span>
+              <span className="text-muted-foreground">캘린더 권한 없음</span>
             </>
           )}
         </div>
+
         {info?.lastSyncedAt && (
           <p className="mt-1 text-xs text-muted-foreground">
             마지막 동기화{" "}
@@ -57,16 +65,49 @@ export function GoogleSettings() {
         {info?.lastError && (
           <p className="mt-1 text-xs text-red-500">오류: {info.lastError}</p>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          disabled={sync.isPending || !info?.connected}
-          onClick={() => sync.mutate()}
-        >
-          <RefreshCw className={cn("size-3.5", sync.isPending && "animate-spin")} />
-          지금 동기화
-        </Button>
+
+        {/* 부여된 권한 — 문제 생겼을 때 바로 진단되도록 */}
+        {info && (
+          <div className="mt-3">
+            <p className="text-xs font-medium text-muted-foreground">부여된 권한</p>
+            <ul className="mt-1 space-y-0.5">
+              {info.grantedScopes.length === 0 && (
+                <li className="text-xs text-muted-foreground">(없음)</li>
+              )}
+              {info.grantedScopes.map((s) => (
+                <li key={s} className="font-mono text-[11px] text-muted-foreground">
+                  {scopeLabel(s)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={sync.isPending || !info?.connected}
+            onClick={() => sync.mutate()}
+          >
+            <RefreshCw className={cn("size-3.5", sync.isPending && "animate-spin")} />
+            지금 동기화
+          </Button>
+          <form action={reconnectAction}>
+            <Button
+              type="submit"
+              size="sm"
+              variant={info?.connected ? "ghost" : "default"}
+            >
+              Google 다시 연결
+            </Button>
+          </form>
+        </div>
+        {!info?.connected && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            &quot;Google 다시 연결&quot;을 누르면 동의 화면이 다시 뜨고, 캘린더 권한이 담긴 새 토큰이 저장됩니다.
+          </p>
+        )}
       </div>
 
       <Separator />

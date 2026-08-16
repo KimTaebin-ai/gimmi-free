@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/actions/auth-helpers";
 import { recordSyncError, syncGoogleCalendar } from "@/lib/google/sync";
-import { hasCalendarScope } from "@/lib/google/tokens";
+import { CALENDAR_SCOPE, getGrantedScopes } from "@/lib/google/tokens";
 import { taskInclude } from "@/lib/task-types";
 import type { CalendarItem, CalendarSyncInfo } from "@/lib/calendar-types";
 
@@ -90,13 +90,14 @@ export async function syncCalendarNow(): Promise<CalendarSyncInfo> {
 
 export async function getCalendarSyncInfo(): Promise<CalendarSyncInfo> {
   const userId = await requireUserId();
-  const [state, scoped] = await Promise.all([
+  const [state, grantedScopes] = await Promise.all([
     prisma.calendarSyncState.findUnique({ where: { userId } }),
-    hasCalendarScope(userId),
+    getGrantedScopes(userId),
   ]);
   return {
-    connected: scoped,
+    connected: grantedScopes.includes(CALENDAR_SCOPE),
     lastSyncedAt: state?.lastSyncedAt ?? null,
     lastError: state?.lastError ?? null,
+    grantedScopes,
   };
 }

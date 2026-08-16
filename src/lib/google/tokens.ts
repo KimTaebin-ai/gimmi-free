@@ -1,5 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { CALENDAR_SCOPE, parseScopes } from "@/lib/google/scopes";
+
+export { CALENDAR_SCOPE };
 
 /** Google 연동이 끊겼을 때(리프레시 실패 등) — UI에서 재연결을 안내한다. */
 export class GoogleAuthError extends Error {
@@ -78,11 +81,16 @@ export async function getGoogleAccessToken(userId: string): Promise<string> {
   return data.access_token;
 }
 
-/** 현재 계정이 Calendar scope를 가지고 있는지 (재동의 안내용) */
-export async function hasCalendarScope(userId: string): Promise<boolean> {
+/** 현재 계정에 실제로 부여된 scope 목록 (설정 화면 진단용) */
+export async function getGrantedScopes(userId: string): Promise<string[]> {
   const account = await prisma.account.findFirst({
     where: { userId, provider: "google" },
     select: { scope: true },
   });
-  return !!account?.scope?.includes("auth/calendar");
+  return [...parseScopes(account?.scope)];
+}
+
+/** 현재 계정이 Calendar 쓰기 권한을 가지고 있는지 (재동의 안내용) */
+export async function hasCalendarScope(userId: string): Promise<boolean> {
+  return (await getGrantedScopes(userId)).includes(CALENDAR_SCOPE);
 }

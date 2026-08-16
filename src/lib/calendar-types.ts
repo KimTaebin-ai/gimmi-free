@@ -29,4 +29,6 @@ export interface CalendarSyncInfo {
   connected: boolean;
   lastSyncedAt: Date | null;
   lastError: string | null;
+  /** 실제로 부여된 Google scope — 권한 문제 진단용 */
+  grantedScopes: string[];
 }

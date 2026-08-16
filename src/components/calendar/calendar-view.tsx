@@ -15,6 +15,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import Link from "next/link";
 import { AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -171,9 +172,13 @@ export function CalendarView() {
       {syncInfo && !syncInfo.connected && (
         <div className="flex shrink-0 items-center gap-2 border-b bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
           <AlertCircle className="size-4 shrink-0" />
-          <span className="flex-1">
-            Google 캘린더 권한이 없습니다. 로그아웃 후 다시 로그인해서 캘린더 접근에 동의해 주세요.
-          </span>
+          <span className="flex-1">Google 캘린더 권한이 아직 없습니다.</span>
+          <Link
+            href="/settings"
+            className="shrink-0 font-medium underline underline-offset-2"
+          >
+            설정에서 다시 연결
+          </Link>
         </div>
       )}
       {syncInfo?.connected && syncInfo.lastError && (
