@@ -5,6 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // 연결 URL은 prisma.config.ts에서 관리 (Prisma 7)
 }
 
 // ---------- Auth.js (NextAuth v5) ----------

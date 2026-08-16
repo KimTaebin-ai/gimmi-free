@@ -17,7 +17,8 @@ npm run dev                 # http://localhost:3000
 
 | 변수 | 설명 |
 |---|---|
-| `DATABASE_URL` | Postgres 연결 문자열 (로컬은 .env.example 값 그대로) |
+| `DATABASE_URL` | Postgres 연결 문자열 — 앱 런타임용 (Supabase는 transaction pooler, 6543) |
+| `DIRECT_URL` | 마이그레이션용 세션/직접 연결 (Supabase는 session pooler, 5432 — 로컬 Docker에선 `DATABASE_URL`과 동일) |
 | `AUTH_SECRET` | `npx auth secret` 또는 `openssl rand -base64 32` |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth 클라이언트 (아래 설정 참고) |
 | `ALLOWED_EMAILS` | 로그인 허용 이메일(콤마 구분) — 이 목록 밖 계정은 거부 |
@@ -35,9 +36,10 @@ npm run dev                 # http://localhost:3000
 ## Vercel 배포
 
 1. GitHub에 push 후 Vercel에서 리포 Import.
-2. Supabase/Neon에서 Postgres 생성 → `DATABASE_URL`을 Vercel 환경변수로.
+2. Supabase/Neon에서 Postgres 생성 → `DATABASE_URL`(pooled)과 `DIRECT_URL`(direct/session)을 Vercel 환경변수로.
 3. `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ALLOWED_EMAILS`도 환경변수로 추가.
 4. 배포 URL의 콜백 주소를 Google OAuth 클라이언트 redirect URI에 추가.
-5. 스키마 반영: 로컬에서 `DATABASE_URL=<프로덕션 URL> npx prisma migrate deploy`.
+5. 스키마 반영: 로컬에서 `npx prisma migrate deploy` (`.env`의 `DIRECT_URL` 사용).
+   주의: Supabase transaction pooler(6543)로는 migrate가 동작하지 않음 — CLI는 항상 `DIRECT_URL`을 쓴다.
 
 빌드 시 `postinstall: prisma generate`가 자동 실행됩니다.
