@@ -16,7 +16,7 @@ import { TaskList } from "@/components/tasks/task-list";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import { TasksSidebar } from "@/components/tasks/tasks-sidebar";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { useProjects, useTags, useTasks } from "@/hooks/use-tasks";
+import { useProjects, useReorderTasks, useTags, useTasks } from "@/hooks/use-tasks";
 import {
   filterForSelection,
   SMART_LISTS,
@@ -32,6 +32,14 @@ export function TasksView() {
   const { data: tasks, isLoading } = useTasks(filter);
   const { data: projects } = useProjects();
   const { data: tags } = useTags();
+  const reorder = useReorderTasks(filter);
+
+  // 날짜 기반 리스트는 날짜 그룹 표시, 나머지는 드래그앤드롭 수동 정렬
+  const dateBased =
+    selection.type === "smart" &&
+    ["today", "tomorrow", "next7"].includes(selection.key);
+  const reorderable =
+    !dateBased && !(selection.type === "smart" && selection.key === "done");
 
   const selectedTask = tasks?.find((t) => t.id === selectedTaskId) ?? null;
 
@@ -113,6 +121,8 @@ export function TasksView() {
             isLoading={isLoading}
             selectedId={selectedTaskId}
             onSelect={setSelectedTaskId}
+            groupByDate={dateBased}
+            onReorder={reorderable ? (ids) => reorder.mutate(ids) : undefined}
             emptyMessage={
               selection.type === "smart" && selection.key === "done"
                 ? "완료한 태스크가 없어요"

@@ -4,7 +4,7 @@ import { Repeat } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { describeRrule, formatDue, isOverdue } from "@/lib/format-date";
+import { describeRrule, formatSchedule, isOverdue } from "@/lib/format-date";
 import type { TaskWithRelations } from "@/lib/task-types";
 
 export const PRIORITY_CHECKBOX: Record<number, string> = {
@@ -46,15 +46,18 @@ export function TaskItem({
         <div className={cn("truncate text-sm", done && "text-muted-foreground line-through")}>
           {task.title}
         </div>
-        {(task.dueAt || task.tags.length > 0 || task.subtasks.length > 0 || task.rrule) && (
+        {(task.dueAt || task.startAt || task.tags.length > 0 || task.subtasks.length > 0 || task.rrule) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-            {task.dueAt && (
+            {(task.dueAt || task.startAt) && (
               <span
                 className={cn(
-                  !done && isOverdue(task.dueAt, task.allDay) && "text-red-500",
+                  !done &&
+                    task.dueAt &&
+                    isOverdue(task.dueAt, task.allDay) &&
+                    "text-red-500",
                 )}
               >
-                {formatDue(task.dueAt, task.allDay)}
+                {formatSchedule(task.startAt, task.dueAt, task.allDay)}
               </span>
             )}
             {task.rrule && (

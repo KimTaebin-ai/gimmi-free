@@ -1,4 +1,12 @@
-import { format, isPast, isThisYear, isToday, isTomorrow, isYesterday } from "date-fns";
+import {
+  format,
+  isPast,
+  isSameDay,
+  isThisYear,
+  isToday,
+  isTomorrow,
+  isYesterday,
+} from "date-fns";
 import { ko } from "date-fns/locale";
 
 export function formatDue(dueAt: Date, allDay: boolean): string {
@@ -11,6 +19,23 @@ export function formatDue(dueAt: Date, allDay: boolean): string {
 
   if (allDay) return day;
   return `${day} ${format(dueAt, "a h:mm", { locale: ko })}`;
+}
+
+/** 시작/마감을 함께 고려한 일정 요약. 예: "오늘 오후 3:00–5:00", "내일 오후 2:00 시작" */
+export function formatSchedule(
+  startAt: Date | null,
+  dueAt: Date | null,
+  allDay: boolean,
+): string | null {
+  if (startAt && dueAt) {
+    if (isSameDay(startAt, dueAt) && !allDay) {
+      return `${formatDue(startAt, false)}–${format(dueAt, "a h:mm", { locale: ko })}`;
+    }
+    return `${formatDue(startAt, allDay)} → ${formatDue(dueAt, allDay)}`;
+  }
+  if (dueAt) return formatDue(dueAt, allDay);
+  if (startAt) return `${formatDue(startAt, allDay)} 시작`;
+  return null;
 }
 
 export function isOverdue(dueAt: Date, allDay: boolean): boolean {

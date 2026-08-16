@@ -54,20 +54,41 @@ export function TaskDetail({
   const patch = (input: Parameters<typeof update.mutate>[0]["input"]) =>
     update.mutate({ id: task.id, input });
 
-  function setDate(date: Date | undefined) {
-    if (!date) return patch({ dueAt: null, allDay: true });
+  function withTime(base: Date, value: string): Date {
+    const [h, m] = value.split(":").map(Number);
+    return set(base, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
+  }
+
+  function setStartDate(date: Date | undefined) {
+    if (!date) return patch({ startAt: null });
+    const prev = task.startAt;
+    patch({
+      startAt:
+        prev && !task.allDay
+          ? set(date, { hours: prev.getHours(), minutes: prev.getMinutes() })
+          : startOfDay(date),
+    });
+  }
+
+  function setStartTime(value: string) {
+    const base = task.startAt ?? task.dueAt ?? new Date();
+    if (!value) return patch({ startAt: startOfDay(base) });
+    patch({ startAt: withTime(base, value), allDay: false });
+  }
+
+  function setDueDate(date: Date | undefined) {
+    if (!date) return patch({ dueAt: null, allDay: task.startAt ? task.allDay : true });
     if (task.dueAt && !task.allDay) {
       patch({ dueAt: set(date, { hours: task.dueAt.getHours(), minutes: task.dueAt.getMinutes() }) });
     } else {
-      patch({ dueAt: startOfDay(date), allDay: true });
+      patch({ dueAt: startOfDay(date) });
     }
   }
 
-  function setTime(value: string) {
-    const base = task.dueAt ?? startOfDay(new Date());
+  function setDueTime(value: string) {
+    const base = task.dueAt ?? task.startAt ?? startOfDay(new Date());
     if (!value) return patch({ dueAt: startOfDay(base), allDay: true });
-    const [h, m] = value.split(":").map(Number);
-    patch({ dueAt: set(base, { hours: h, minutes: m }), allDay: false });
+    patch({ dueAt: withTime(base, value), allDay: false });
   }
 
   function saveTags() {
@@ -124,43 +145,61 @@ export function TaskDetail({
           )}
         />
 
-        {/* 날짜/시간/반복 */}
+        {/* 시작/마감/반복 */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 justify-start font-normal">
-                  <CalendarDays className="size-3.5" />
-                  {task.dueAt ? formatDue(task.dueAt, task.allDay) : "날짜 없음"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={task.dueAt ?? undefined}
-                  onSelect={setDate}
-                />
-              </PopoverContent>
-            </Popover>
-            {task.dueAt && (
-              <>
-                <Input
-                  type="time"
-                  value={task.allDay || !task.dueAt ? "" : format(task.dueAt, "HH:mm")}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="h-8 w-28"
-                />
+          {(
+            [
+              {
+                label: "시작",
+                value: task.startAt,
+                setDate: setStartDate,
+                setTime: setStartTime,
+                clear: () => patch({ startAt: null }),
+              },
+              {
+                label: "마감",
+                value: task.dueAt,
+                setDate: setDueDate,
+                setTime: setDueTime,
+                clear: () => patch({ dueAt: null, allDay: task.startAt ? task.allDay : true, rrule: null }),
+              },
+            ] as const
+          ).map((row) => (
+            <div key={row.label} className="flex items-center gap-2">
+              <span className="w-8 shrink-0 text-xs text-muted-foreground">{row.label}</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 flex-1 justify-start font-normal">
+                    <CalendarDays className="size-3.5" />
+                    {row.value ? formatDue(row.value, true) : "날짜 없음"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={row.value ?? undefined}
+                    onSelect={row.setDate}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Input
+                type="time"
+                value={row.value && !task.allDay ? format(row.value, "HH:mm") : ""}
+                onChange={(e) => row.setTime(e.target.value)}
+                className="h-8 w-27"
+              />
+              {row.value && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-muted-foreground"
-                  onClick={() => patch({ dueAt: null, allDay: true, rrule: null })}
+                  className="size-8 shrink-0 text-muted-foreground"
+                  onClick={row.clear}
                 >
                   <X className="size-3.5" />
                 </Button>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          ))}
           <Select
             value={rruleValue}
             onValueChange={(v) => patch({ rrule: v === "none" ? null : v })}

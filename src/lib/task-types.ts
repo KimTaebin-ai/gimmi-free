@@ -34,6 +34,7 @@ export interface CreateTaskInput {
   projectId?: string | null;
   parentId?: string | null;
   priority?: number;
+  startAt?: Date | null;
   dueAt?: Date | null;
   allDay?: boolean;
   rrule?: string | null;
@@ -45,6 +46,7 @@ export interface UpdateTaskInput {
   note?: string | null;
   projectId?: string | null;
   priority?: number;
+  startAt?: Date | null;
   dueAt?: Date | null;
   allDay?: boolean;
   rrule?: string | null;

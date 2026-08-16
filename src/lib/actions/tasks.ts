@@ -15,16 +15,29 @@ import type { Prisma } from "@/generated/prisma/client";
 function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInput {
   const base: Prisma.TaskWhereInput = { userId, parentId: null };
   switch (filter.kind) {
-    case "today":
-      return { ...base, status: "todo", dueAt: { lte: new Date(filter.end) } };
-    case "range":
+    case "today": {
+      const end = new Date(filter.end);
+      // 마감일 기준, 마감이 없으면 시작일 기준으로 포함
       return {
         ...base,
         status: "todo",
-        dueAt: { gte: new Date(filter.from), lte: new Date(filter.to) },
+        OR: [{ dueAt: { lte: end } }, { dueAt: null, startAt: { lte: end } }],
       };
+    }
+    case "range": {
+      const from = new Date(filter.from);
+      const to = new Date(filter.to);
+      return {
+        ...base,
+        status: "todo",
+        OR: [
+          { dueAt: { gte: from, lte: to } },
+          { dueAt: null, startAt: { gte: from, lte: to } },
+        ],
+      };
+    }
     case "unscheduled":
-      return { ...base, status: "todo", dueAt: null };
+      return { ...base, status: "todo", dueAt: null, startAt: null };
     case "all":
       return { ...base, status: "todo" };
     case "done":
@@ -38,20 +51,37 @@ function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInpu
 
 export async function listTasks(filter: TaskFilter): Promise<TaskWithRelations[]> {
   const userId = await requireUserId();
+  // 날짜 기반 스마트 리스트는 날짜순, 나머지는 수동 정렬(sortOrder, 드래그앤드롭)
+  const dateOrdered = filter.kind === "today" || filter.kind === "range";
   return prisma.task.findMany({
     where: filterToWhere(userId, filter),
     include: taskInclude,
     orderBy:
       filter.kind === "done"
         ? [{ completedAt: "desc" }]
-        : [
-            { dueAt: { sort: "asc", nulls: "last" } },
-            { priority: "desc" },
-            { sortOrder: "asc" },
-            { createdAt: "asc" },
-          ],
+        : dateOrdered
+          ? [
+              { dueAt: { sort: "asc", nulls: "last" } },
+              { priority: "desc" },
+              { sortOrder: "asc" },
+              { createdAt: "asc" },
+            ]
+          : [{ sortOrder: "asc" }, { createdAt: "asc" }],
     take: filter.kind === "done" ? 200 : undefined,
   });
+}
+
+/** 드래그앤드롭 재정렬 — 화면에 보이는 순서(ids)대로 sortOrder를 다시 부여 */
+export async function reorderTasks(orderedIds: string[]): Promise<void> {
+  const userId = await requireUserId();
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.task.updateMany({
+        where: { id, userId },
+        data: { sortOrder: index },
+      }),
+    ),
+  );
 }
 
 function tagConnectOrCreate(userId: string, tagNames: string[]) {
@@ -72,6 +102,13 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithRelati
   const title = input.title.trim();
   if (!title) throw new Error("제목이 비어 있습니다");
 
+  // 수동 정렬 리스트에서 맨 아래에 추가되도록
+  const last = await prisma.task.findFirst({
+    where: { userId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+
   return prisma.task.create({
     data: {
       userId,
@@ -80,9 +117,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithRelati
       projectId: input.projectId ?? null,
       parentId: input.parentId ?? null,
       priority: input.priority ?? 0,
+      startAt: input.startAt ?? null,
       dueAt: input.dueAt ?? null,
       allDay: input.allDay ?? true,
       rrule: input.rrule ?? null,
+      sortOrder: (last?.sortOrder ?? 0) + 1,
       tags: input.tagNames?.length ? tagConnectOrCreate(userId, input.tagNames) : undefined,
     },
     include: taskInclude,
@@ -132,11 +171,13 @@ export async function toggleTaskDone(
 
   let nextInstance: TaskWithRelations | null = null;
   if (done && existing.status === "todo" && existing.rrule) {
-    const base = existing.dueAt ?? new Date();
+    const base = existing.dueAt ?? existing.startAt ?? new Date();
     const options = RRule.parseString(existing.rrule);
     options.dtstart = base;
     const next = new RRule(options).after(base, false);
     if (next) {
+      // 시작 시각이 있으면 마감과의 간격을 유지한 채 함께 이동
+      const shift = next.getTime() - base.getTime();
       nextInstance = await prisma.task.create({
         data: {
           userId,
@@ -144,7 +185,8 @@ export async function toggleTaskDone(
           note: existing.note,
           projectId: existing.projectId,
           priority: existing.priority,
-          dueAt: next,
+          startAt: existing.startAt ? new Date(existing.startAt.getTime() + shift) : null,
+          dueAt: existing.dueAt ? next : null,
           allDay: existing.allDay,
           rrule: existing.rrule,
           tags: existing.tags.length

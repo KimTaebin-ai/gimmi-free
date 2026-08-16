@@ -10,6 +10,7 @@ import {
   createTask,
   deleteTask,
   listTasks,
+  reorderTasks,
   toggleTaskDone,
   updateTask,
 } from "@/lib/actions/tasks";
@@ -122,6 +123,28 @@ export function useUpdateTask() {
     },
     onError: (_err, _vars, ctx) => ctx && cache.restore(ctx.prev),
     onSettled: () => cache.invalidateAll(),
+  });
+}
+
+/** 드래그앤드롭 재정렬 — 해당 필터 캐시를 즉시 새 순서로 교체 */
+export function useReorderTasks(filter: TaskFilter) {
+  const cache = useTasksCache();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) => reorderTasks(orderedIds),
+    onMutate: async (orderedIds) => {
+      const prev = await cache.snapshot();
+      const current = cache.qc.getQueryData<TaskWithRelations[]>(["tasks", filter]);
+      if (current) {
+        const byId = new Map(current.map((t) => [t.id, t]));
+        const next = orderedIds
+          .map((id) => byId.get(id))
+          .filter((t): t is TaskWithRelations => !!t);
+        cache.qc.setQueryData(["tasks", filter], next);
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => ctx && cache.restore(ctx.prev),
+    onSettled: () => cache.qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 }
 

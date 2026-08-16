@@ -23,6 +23,7 @@ export function TodayTasks() {
           isLoading={isLoading}
           selectedId={selectedTaskId}
           onSelect={setSelectedTaskId}
+          groupByDate
           emptyMessage="오늘 할 일이 없어요 🎉"
         />
       </div>
