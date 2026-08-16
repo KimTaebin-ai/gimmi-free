@@ -25,6 +25,7 @@ model User {
   tags           Tag[]
   tasks          Task[]
   calendarEvents CalendarEvent[]
+  calendarSync   CalendarSyncState?
   routines       WorkoutRoutine[]
   workouts       Workout[]
   bodyMetrics    BodyMetric[]
@@ -151,11 +152,14 @@ model CalendarEvent {
   id            String      @id @default(cuid())
   userId        String
   googleEventId String
+  calendarId    String      @default("primary")
   title         String
+  description   String?
   startAt       DateTime
   endAt         DateTime
   allDay        Boolean     @default(false)
   location      String?
+  htmlLink      String?
   source        EventSource @default(google)
   lastSyncedAt  DateTime    @default(now())
 
@@ -163,6 +167,17 @@ model CalendarEvent {
 
   @@unique([userId, googleEventId])
   @@index([userId, startAt])
+}
+
+/// Google Calendar 증분 동기화 상태(syncToken). 사용자당 1행.
+model CalendarSyncState {
+  userId         String   @id
+  calendarId     String   @default("primary")
+  syncToken      String?
+  lastSyncedAt   DateTime?
+  lastError      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Fitness ----------
