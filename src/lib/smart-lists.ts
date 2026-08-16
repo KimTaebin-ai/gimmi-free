@@ -28,7 +28,11 @@ export function filterForSelection(sel: ListSelection, now = new Date()): TaskFi
   if (sel.type === "tag") return { kind: "tag", tagId: sel.id };
   switch (sel.key) {
     case "today":
-      return { kind: "today", end: endOfDay(now).toISOString() };
+      return {
+        kind: "today",
+        start: startOfDay(now).toISOString(),
+        end: endOfDay(now).toISOString(),
+      };
     case "tomorrow":
       return {
         kind: "range",

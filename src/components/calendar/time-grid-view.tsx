@@ -3,7 +3,14 @@
 import { useEffect, useRef } from "react";
 import { differenceInMinutes, format, isToday, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
-import { groupItemsByDay, itemColor, itemsForDay } from "@/components/calendar/shared";
+import {
+  groupItemsByDay,
+  isMultiDay,
+  itemColor,
+  itemsForDay,
+  layoutSpans,
+  weekSegments,
+} from "@/components/calendar/shared";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const HOUR_HEIGHT = 48; // px
@@ -20,7 +27,8 @@ interface Positioned {
 /** 겹치는 일정을 나란히 배치하기 위한 열 계산 */
 function layout(items: CalendarItem[], day: Date): Positioned[] {
   const dayStart = startOfDay(day);
-  const timed = items.filter((i) => !i.allDay);
+  // 여러 날에 걸친 일정은 위쪽 종일 영역에서 연속 바로 그리므로 여기선 제외
+  const timed = items.filter((i) => !i.allDay && !isMultiDay(i));
 
   const boxes = timed.map((item) => {
     const startMin = Math.max(0, differenceInMinutes(item.startAt, dayStart));
@@ -88,10 +96,11 @@ export function TimeGridView({
     if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_HEIGHT;
   }, []);
 
-  const allDayRows = days.map((day) =>
-    itemsForDay(grouped, day).filter((i) => i.allDay),
-  );
-  const hasAllDay = allDayRows.some((r) => r.length > 0);
+  // 종일/다기간 아이템은 날짜별로 쪼개지 않고 하나의 연속 바로 그린다
+  const spanItems = items.filter((i) => i.allDay || isMultiDay(i));
+  const spans = layoutSpans(spanItems, days);
+  const segments = weekSegments(spans, 0);
+  const laneCount = segments.reduce((max, s) => Math.max(max, s.lane + 1), 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -115,28 +124,51 @@ export function TimeGridView({
         ))}
       </div>
 
-      {/* 종일 영역 */}
-      {hasAllDay && (
+      {/* 종일 / 여러 날에 걸친 일정 */}
+      {laneCount > 0 && (
         <div className="flex shrink-0 border-b pr-2">
           <div className="w-12 shrink-0 py-1 pr-1 text-right text-[10px] text-muted-foreground">
             종일
           </div>
-          {allDayRows.map((row, i) => (
-            <div key={i} className="flex flex-1 flex-col gap-0.5 border-l p-0.5">
-              {row.map((item) => (
+          <div className="relative flex-1">
+            <div className="absolute inset-0 flex">
+              {days.map((d) => (
+                <div key={d.toISOString()} className="flex-1 border-l" />
+              ))}
+            </div>
+            <div
+              className="relative grid gap-y-px py-0.5"
+              style={{
+                gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`,
+                gridAutoRows: "17px",
+              }}
+            >
+              {segments.map((seg) => (
                 <button
-                  key={`${item.kind}-${item.id}`}
-                  onClick={() => onSelectItem(item)}
+                  key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
+                  onClick={() => onSelectItem(seg.item)}
+                  style={{
+                    gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
+                    gridRow: seg.lane + 1,
+                  }}
                   className={cn(
-                    "truncate rounded px-1 py-px text-left text-[10px]",
-                    itemColor(item),
+                    "mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
+                    itemColor(seg.item),
+                    seg.isStart ? "rounded-l" : "rounded-l-none",
+                    seg.isEnd ? "rounded-r" : "rounded-r-none",
+                    seg.isEnd && !seg.isStart && "justify-end",
                   )}
+                  title={seg.item.title}
                 >
-                  {item.title}
+                  {seg.isStart || seg.isEnd ? (
+                    <span className="truncate">{seg.item.title}</span>
+                  ) : (
+                    <span className="sr-only">{seg.item.title}</span>
+                  )}
                 </button>
               ))}
             </div>
-          ))}
+          </div>
         </div>
       )}
 

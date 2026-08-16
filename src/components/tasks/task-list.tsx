@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { format, isToday, isTomorrow, startOfDay } from "date-fns";
+import { endOfDay, format, isSameDay, isToday, isTomorrow, startOfDay } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { TaskItem } from "@/components/tasks/task-item";
@@ -62,6 +62,16 @@ function groupLabel(task: TaskWithRelations, today: Date): string {
   const anchor = task.dueAt ?? task.startAt;
   if (!anchor) return "날짜 없음";
   if (task.dueAt && task.dueAt < today && !isToday(task.dueAt)) return "지연됨";
+  // 여러 날에 걸쳐 진행 중인 태스크는 마감일 그룹에 묻히지 않게 따로 묶는다
+  if (
+    task.startAt &&
+    task.dueAt &&
+    !isSameDay(task.startAt, task.dueAt) &&
+    task.startAt <= endOfDay(today) &&
+    task.dueAt >= today
+  ) {
+    return "진행 중";
+  }
   if (isToday(anchor)) return "오늘";
   if (isTomorrow(anchor)) return "내일";
   return format(anchor, "M월 d일 EEEE", { locale: ko });
@@ -92,13 +102,16 @@ export function TaskList({
       if (last && last.label === label) last.items.push(task);
       else out.push({ label, items: [task] });
     }
-    // "지연됨"이 여러 날짜에 걸쳐도 항상 맨 위 한 그룹으로
-    const overdueIdx = out.findIndex((g) => g.label === "지연됨");
-    if (overdueIdx > 0) {
-      const [overdue] = out.splice(overdueIdx, 1);
-      out.unshift(overdue);
+    // 같은 라벨이 여러 번 나뉘지 않게 합치고, 지연됨 → 진행 중 순으로 위에 고정
+    const merged: typeof out = [];
+    for (const g of out) {
+      const existing = merged.find((m) => m.label === g.label);
+      if (existing) existing.items.push(...g.items);
+      else merged.push(g);
     }
-    return out;
+    const priorityOf = (label: string) =>
+      label === "지연됨" ? 0 : label === "진행 중" ? 1 : 2;
+    return merged.sort((a, b) => priorityOf(a.label) - priorityOf(b.label));
   }, [groupByDate, tasks]);
 
   if (isLoading) {

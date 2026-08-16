@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   eachDayOfInterval,
   endOfMonth,
@@ -11,11 +12,17 @@ import {
   startOfWeek,
 } from "date-fns";
 import { cn } from "@/lib/utils";
-import { groupItemsByDay, itemColor, itemsForDay } from "@/components/calendar/shared";
+import {
+  itemColor,
+  layoutSpans,
+  weekSegments,
+  type ItemSpan,
+} from "@/components/calendar/shared";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-const MAX_CHIPS = 3;
+const MAX_LANES = 3; // 이보다 아래 레인은 "+N개"로 접는다
+const LANE_HEIGHT = 17; // px
 
 export function MonthView({
   anchor,
@@ -28,11 +35,27 @@ export function MonthView({
   onSelectItem: (item: CalendarItem) => void;
   onSelectDay: (date: Date) => void;
 }) {
-  const grouped = groupItemsByDay(items);
-  const days = eachDayOfInterval({
-    start: startOfWeek(startOfMonth(anchor)),
-    end: endOfWeek(endOfMonth(anchor)),
-  });
+  const days = useMemo(
+    () =>
+      eachDayOfInterval({
+        start: startOfWeek(startOfMonth(anchor)),
+        end: endOfWeek(endOfMonth(anchor)),
+      }),
+    [anchor],
+  );
+
+  const spans = useMemo(() => layoutSpans(items, days), [items, days]);
+  const weekCount = days.length / 7;
+
+  // 레인이 넘쳐 숨겨진 아이템 수를 날짜별로 집계
+  const hiddenPerDay = useMemo(() => {
+    const counts = new Array(days.length).fill(0);
+    for (const s of spans) {
+      if (s.lane < MAX_LANES) continue;
+      for (let i = s.startIdx; i <= s.endIdx; i++) counts[i]++;
+    }
+    return counts;
+  }, [spans, days.length]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -50,62 +73,122 @@ export function MonthView({
           </div>
         ))}
       </div>
+
       <div
-        className="grid min-h-0 flex-1 grid-cols-7"
-        style={{ gridTemplateRows: `repeat(${days.length / 7}, minmax(0, 1fr))` }}
+        className="grid min-h-0 flex-1"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
       >
-        {days.map((day) => {
-          const dayItems = itemsForDay(grouped, day);
-          const outside = !isSameMonth(day, anchor);
-          const today = isToday(day);
-          return (
-            <button
-              key={day.toISOString()}
-              onClick={() => onSelectDay(day)}
+        {Array.from({ length: weekCount }, (_, w) => (
+          <WeekRow
+            key={w}
+            weekIndex={w}
+            days={days.slice(w * 7, w * 7 + 7)}
+            spans={spans}
+            hidden={hiddenPerDay.slice(w * 7, w * 7 + 7)}
+            anchor={anchor}
+            onSelectItem={onSelectItem}
+            onSelectDay={onSelectDay}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WeekRow({
+  weekIndex,
+  days,
+  spans,
+  hidden,
+  anchor,
+  onSelectItem,
+  onSelectDay,
+}: {
+  weekIndex: number;
+  days: Date[];
+  spans: ItemSpan[];
+  hidden: number[];
+  anchor: Date;
+  onSelectItem: (item: CalendarItem) => void;
+  onSelectDay: (date: Date) => void;
+}) {
+  const segments = weekSegments(spans, weekIndex).filter((s) => s.lane < MAX_LANES);
+
+  return (
+    <div className="relative grid min-h-0 grid-cols-7">
+      {/* 날짜 셀 (배경 + 클릭 영역) */}
+      {days.map((day, i) => {
+        const outside = !isSameMonth(day, anchor);
+        return (
+          <button
+            key={day.toISOString()}
+            onClick={() => onSelectDay(day)}
+            className={cn(
+              "flex min-w-0 flex-col items-start border-b border-r p-1 text-left transition-colors hover:bg-accent/40",
+              outside && "bg-muted/30",
+            )}
+          >
+            <span
               className={cn(
-                "flex min-h-0 flex-col gap-0.5 overflow-hidden border-b border-r p-1 text-left transition-colors hover:bg-accent/40",
-                outside && "bg-muted/30",
+                "flex size-5 shrink-0 items-center justify-center rounded-full text-xs",
+                outside && "text-muted-foreground/50",
+                isToday(day) && "bg-primary font-semibold text-primary-foreground",
               )}
             >
-              <span
-                className={cn(
-                  "mb-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-xs",
-                  outside && "text-muted-foreground/50",
-                  today && "bg-primary font-semibold text-primary-foreground",
-                )}
-              >
-                {format(day, "d")}
+              {format(day, "d")}
+            </span>
+            {hidden[i] > 0 && (
+              <span className="mt-auto text-[10px] text-muted-foreground">
+                +{hidden[i]}개
               </span>
-              {dayItems.slice(0, MAX_CHIPS).map((item) => (
-                <span
-                  key={`${item.kind}-${item.id}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectItem(item);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.stopPropagation();
-                      onSelectItem(item);
-                    }
-                  }}
-                  className={cn(
-                    "truncate rounded px-1 py-px text-[10px] leading-4",
-                    itemColor(item),
+            )}
+          </button>
+        );
+      })}
+
+      {/* 일정 바 레이어 — 날짜 숫자 아래에 겹쳐 그린다 */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-6 grid grid-cols-7 gap-y-px"
+        style={{ gridAutoRows: `${LANE_HEIGHT}px` }}
+      >
+        {segments.map((seg) => {
+          // 요청사항: 시작일/종료일이 포함된 조각에만 제목을 쓰고,
+          // 중간 주(시작도 끝도 아닌 구간)는 색 띠만 남긴다.
+          const showTitle = seg.isStart || seg.isEnd;
+          const alignEnd = seg.isEnd && !seg.isStart;
+          const timed = !seg.item.allDay && seg.isStart && seg.colSpan === 1;
+          return (
+            <button
+              key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectItem(seg.item);
+              }}
+              style={{
+                gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
+                gridRow: seg.lane + 1,
+              }}
+              className={cn(
+                "pointer-events-auto mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
+                itemColor(seg.item),
+                // 잘린 쪽은 각지게 둬서 이어지는 느낌을 준다
+                seg.isStart ? "rounded-l" : "rounded-l-none",
+                seg.isEnd ? "rounded-r" : "rounded-r-none",
+                alignEnd && "justify-end",
+              )}
+              title={seg.item.title}
+            >
+              {showTitle ? (
+                <span className="truncate">
+                  {timed && (
+                    <span className="mr-1 opacity-70">
+                      {format(seg.item.startAt, "H:mm")}
+                    </span>
                   )}
-                >
-                  {!item.allDay && (
-                    <span className="mr-1 opacity-70">{format(item.startAt, "H:mm")}</span>
-                  )}
-                  {item.title}
+                  {seg.item.title}
                 </span>
-              ))}
-              {dayItems.length > MAX_CHIPS && (
-                <span className="px-1 text-[10px] text-muted-foreground">
-                  +{dayItems.length - MAX_CHIPS}개
-                </span>
+              ) : (
+                <span className="sr-only">{seg.item.title}</span>
               )}
             </button>
           );

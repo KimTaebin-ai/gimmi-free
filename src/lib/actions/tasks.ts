@@ -14,16 +14,33 @@ import {
 } from "@/lib/task-types";
 import type { Prisma } from "@/generated/prisma/client";
 
+/**
+ * 태스크 구간이 [from, to]와 겹치는 조건.
+ * 시작~마감이 여러 날에 걸친 태스크도 그 사이 날짜의 리스트에 잡히도록
+ * "구간을 완전히 덮는" 경우까지 포함한다(캘린더 표시와 일치시키기 위함).
+ */
+function overlapsRange(from: Date, to: Date): Prisma.TaskWhereInput[] {
+  return [
+    { dueAt: { gte: from, lte: to } }, // 마감이 구간 안
+    { startAt: { gte: from, lte: to } }, // 시작이 구간 안
+    { startAt: { lte: from }, dueAt: { gte: to } }, // 구간을 통째로 덮음(진행 중)
+  ];
+}
+
 function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInput {
   const base: Prisma.TaskWhereInput = { userId, parentId: null };
   switch (filter.kind) {
     case "today": {
-      const end = new Date(filter.end);
-      // 마감일 기준, 마감이 없으면 시작일 기준으로 포함
+      const from = new Date(filter.start);
+      const to = new Date(filter.end);
       return {
         ...base,
         status: "todo",
-        OR: [{ dueAt: { lte: end } }, { dueAt: null, startAt: { lte: end } }],
+        OR: [
+          { dueAt: { lt: from } }, // 지연됨
+          { dueAt: null, startAt: { lte: to } }, // 마감 없이 시작만 지정
+          ...overlapsRange(from, to),
+        ],
       };
     }
     case "range": {
@@ -33,8 +50,8 @@ function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInpu
         ...base,
         status: "todo",
         OR: [
-          { dueAt: { gte: from, lte: to } },
           { dueAt: null, startAt: { gte: from, lte: to } },
+          ...overlapsRange(from, to),
         ],
       };
     }

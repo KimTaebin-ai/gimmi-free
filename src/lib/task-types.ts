@@ -20,7 +20,7 @@ export type TagWithCount = Prisma.TagGetPayload<{
 
 /** 스마트 리스트/필터 — 날짜는 클라이언트 타임존 기준으로 계산해 ISO로 넘긴다 */
 export type TaskFilter =
-  | { kind: "today"; end: string } // 지연 포함: dueAt <= end
+  | { kind: "today"; start: string; end: string } // 지연 + 오늘 구간에 걸친 것
   | { kind: "range"; from: string; to: string } // 내일, 다음 7일
   | { kind: "unscheduled" }
   | { kind: "all" }
