@@ -1,5 +1,5 @@
-import { addDays, endOfDay, startOfDay } from "date-fns";
-import type { TaskFilter } from "@/lib/task-types";
+import { addDays, endOfDay, format, startOfDay } from "date-fns";
+import type { DateWindow, TaskFilter } from "@/lib/task-types";
 
 export type SmartListKey =
   | "today"
@@ -44,28 +44,26 @@ export function dateRangeForSelection(
   }
 }
 
+/** 로컬 날짜 구간 → 시각/달력날짜 두 기준을 함께 담은 창 */
+function windowFor(from: Date, to: Date): DateWindow {
+  return {
+    start: startOfDay(from).toISOString(),
+    end: endOfDay(to).toISOString(),
+    dateFrom: format(from, "yyyy-MM-dd"),
+    dateTo: format(to, "yyyy-MM-dd"),
+  };
+}
+
 export function filterForSelection(sel: ListSelection, now = new Date()): TaskFilter {
   if (sel.type === "project") return { kind: "project", projectId: sel.id };
   if (sel.type === "tag") return { kind: "tag", tagId: sel.id };
   switch (sel.key) {
     case "today":
-      return {
-        kind: "today",
-        start: startOfDay(now).toISOString(),
-        end: endOfDay(now).toISOString(),
-      };
+      return { kind: "today", ...windowFor(now, now) };
     case "tomorrow":
-      return {
-        kind: "range",
-        from: startOfDay(addDays(now, 1)).toISOString(),
-        to: endOfDay(addDays(now, 1)).toISOString(),
-      };
+      return { kind: "range", ...windowFor(addDays(now, 1), addDays(now, 1)) };
     case "next7":
-      return {
-        kind: "range",
-        from: startOfDay(now).toISOString(),
-        to: endOfDay(addDays(now, 6)).toISOString(),
-      };
+      return { kind: "range", ...windowFor(now, addDays(now, 6)) };
     case "unscheduled":
       return { kind: "unscheduled" };
     case "all":

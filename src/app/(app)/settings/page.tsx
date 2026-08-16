@@ -1,5 +1,6 @@
 import { auth, signIn } from "@/auth";
 import { GoogleSettings } from "@/components/settings/google-settings";
+import { TimezoneCard } from "@/components/settings/timezone-card";
 
 export default async function SettingsPage() {
   const session = await auth();
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
         <p className="mt-2 text-sm text-muted-foreground">{session?.user?.email}</p>
       </section>
 
+      <TimezoneCard />
       <GoogleSettings reconnectAction={reconnectGoogle} />
     </div>
   );

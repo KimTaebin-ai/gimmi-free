@@ -42,6 +42,7 @@ src/
     actions/                # "use server" 서버 액션 (tasks, projects, tags …)
     quick-add.ts            # 퀵애드 자연어 파서(한국어 날짜/시간, #태그, !우선순위, 반복)
     smart-lists.ts          # 스마트 리스트 → TaskFilter 변환(날짜는 클라 타임존 기준)
+    timezone.ts             # ★ 날짜/시간 단일 기준. 시각(instant) vs 떠 있는 날짜(종일) 구분
     calendar-utils.ts       # [startAt, endAt) 반열린 구간 + 종일=UTC 자정 규칙
     date-only.ts            # @db.Date 컬럼용. 날짜만 있는 값은 "yyyy-MM-dd"로 주고받고 UTC 자정 저장
     fitness-stats.ts        # 1RM(Epley)·볼륨·부위별 집계·이동평균 (순수 함수, 테스트 대상)
@@ -102,6 +103,17 @@ src/
 - 스키마 변경은 `npx prisma migrate dev --name <설명>`으로 마이그레이션 생성(스키마 직접 push 금지).
 - 모바일: 하단 탭바 5개(오늘/캘린더/피트니스/식단/더보기). PC: 3-pane(사이드바+메인+상세). 다크모드 지원.
 - 낙관적 UI: 태스크 완료 체크 등은 서버 응답 전 즉시 반영(TanStack Query mutation).
+- **날짜/시간 (해외 사용 포함) — `src/lib/timezone.ts`가 단일 기준.**
+  - **시각(instant)**: 시간이 지정된 태스크/일정. UTC로 저장하고 볼 때 현재 위치 타임존으로 렌더링.
+    서울에서 만든 오후 3시는 뉴욕에서 오전 2시로 보이는 게 맞다.
+  - **떠 있는 날짜(floating date)**: 종일 태스크/일정. "8월 20일"은 어디서 보든 8월 20일이어야 하므로
+    **UTC 자정**으로 저장하고 UTC 연·월·일로 읽는다(Google의 `date: "2026-08-20"`과 같은 개념).
+  - 종일 값을 로컬 자정으로 저장하면 타임존이 바뀔 때 하루가 밀린다. 생성은 `toFloatingDate()`,
+    표시·비교는 `forDisplay()`를 반드시 경유할 것.
+  - 스마트 리스트 필터는 종일/시간지정을 **각자의 기준으로** 비교한다(한 기준으로 묶으면
+    UTC 오프셋이 음수인 지역에서 하루 어긋남). `TaskFilter`의 `DateWindow` 참고.
+  - 브라우저 타임존은 `TimeZoneSync`가 `User.timezone`에 반영(서버 계산용). 화면은 브라우저
+    타임존을 직접 쓰므로 이동 즉시 반영된다.
 - 차트: 색은 `globals.css`의 `--chart-*` CSS 변수로만 지정(테마 전환이 자동으로 따라감).
   팔레트는 검증된 카테고리 슬롯 1~3이며 라이트/다크 모두 CVD 검사를 통과한 값이다.
   **이중 축(y축 2개) 금지** — 단위가 다르면 차트를 나눈다(예: 체중·골격근량 kg / 체지방률 %).

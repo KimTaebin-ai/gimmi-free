@@ -8,7 +8,7 @@ import {
   type EventWritePayload,
 } from "@/lib/google/calendar";
 import { getSettings } from "@/lib/settings";
-import { zonedDateString } from "@/lib/calendar-utils";
+import { floatingDateKey } from "@/lib/timezone";
 
 const DEFAULT_DURATION_MS = 60 * 60 * 1000; // 종료 시각이 없을 때 1시간
 
@@ -33,21 +33,21 @@ function isEligible(task: PushableTask, allowAllDay: boolean): boolean {
   return allowAllDay || !task.allDay;
 }
 
-function buildPayload(task: PushableTask, timeZone: string): EventWritePayload {
+function buildPayload(task: PushableTask): EventWritePayload {
   const start = task.startAt ?? task.dueAt!;
   const rawEnd = task.dueAt ?? task.startAt!;
 
   if (task.allDay) {
-    // 종일 이벤트는 date(YYYY-MM-DD). 종료일은 배타적이라 +1일.
-    // 저장된 값이 로컬 자정이므로 사용자 타임존으로 날짜를 뽑아야 하루가 밀리지 않는다.
+    // 종일 값은 떠 있는 날짜(UTC 자정)로 저장되므로 UTC 날짜를 그대로 쓴다.
+    // Google의 종료일은 배타적이라 +1일.
     const endExclusive = new Date(
       Math.max(rawEnd.getTime(), start.getTime()) + 86400000,
     );
     return {
       summary: task.title,
       description: task.note ?? undefined,
-      start: { date: zonedDateString(start, timeZone) },
-      end: { date: zonedDateString(endExclusive, timeZone) },
+      start: { date: floatingDateKey(start) },
+      end: { date: floatingDateKey(endExclusive) },
     };
   }
 
@@ -80,10 +80,8 @@ const TASK_SELECT = {
 
 /** 실제 전송 로직 (예외를 던진다 — 호출부에서 처리) */
 async function pushOne(
-  userId: string,
   task: PushableTask,
   accessToken: string,
-  timeZone: string,
   allowAllDay: boolean,
 ): Promise<void> {
   if (!isEligible(task, allowAllDay)) {
@@ -98,7 +96,7 @@ async function pushOne(
     return;
   }
 
-  const payload = buildPayload(task, timeZone);
+  const payload = buildPayload(task);
   if (task.googleEventId) {
     await patchEvent(accessToken, task.googleEventId, payload);
   } else {
@@ -112,21 +110,14 @@ async function pushOne(
 
 export async function pushTaskToGoogle(userId: string, taskId: string): Promise<void> {
   try {
-    const [settings, user, task] = await Promise.all([
+    const [settings, task] = await Promise.all([
       getSettings(userId),
-      prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
       prisma.task.findUnique({ where: { id: taskId, userId }, select: TASK_SELECT }),
     ]);
     if (!settings.syncTasksToCalendar || !task) return;
 
     const accessToken = await getGoogleAccessToken(userId);
-    await pushOne(
-      userId,
-      task,
-      accessToken,
-      user?.timezone ?? "Asia/Seoul",
-      settings.syncAllDayTasks,
-    );
+    await pushOne(task, accessToken, settings.syncAllDayTasks);
   } catch (err) {
     console.error(`[calendar] 태스크 ${taskId} push 실패:`, err);
   }
@@ -143,9 +134,7 @@ export async function backfillTaskEvents(
   const settings = await getSettings(userId);
   if (!settings.syncTasksToCalendar) return { pushed: 0, failed: 0 };
 
-  const [user, tasks] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
-    prisma.task.findMany({
+  const tasks = await prisma.task.findMany({
       where: {
         userId,
         status: "todo",
@@ -154,20 +143,18 @@ export async function backfillTaskEvents(
         ...(settings.syncAllDayTasks ? {} : { allDay: false }),
         OR: [{ startAt: { not: null } }, { dueAt: { not: null } }],
       },
-      select: TASK_SELECT,
-      take: 200,
-    }),
-  ]);
+    select: TASK_SELECT,
+    take: 200,
+  });
   if (tasks.length === 0) return { pushed: 0, failed: 0 };
 
   const accessToken = await getGoogleAccessToken(userId);
-  const timeZone = user?.timezone ?? "Asia/Seoul";
   let pushed = 0;
   let failed = 0;
 
   for (const task of tasks) {
     try {
-      await pushOne(userId, task, accessToken, timeZone, settings.syncAllDayTasks);
+      await pushOne(task, accessToken, settings.syncAllDayTasks);
       pushed++;
     } catch (err) {
       failed++;

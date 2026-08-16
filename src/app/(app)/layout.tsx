@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { Sidebar, BottomTabBar } from "@/components/app-nav";
 import { Providers } from "@/components/providers";
+import { TimeZoneSync } from "@/components/timezone-sync";
 import { Button } from "@/components/ui/button";
 
 export default async function AppLayout({
@@ -15,6 +16,7 @@ export default async function AppLayout({
 
   return (
     <Providers>
+      <TimeZoneSync />
       <div className="flex h-dvh">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

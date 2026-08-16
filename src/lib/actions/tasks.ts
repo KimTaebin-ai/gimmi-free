@@ -8,10 +8,12 @@ import { pushTaskToGoogle, removeTaskFromGoogle } from "@/lib/google/task-push";
 import {
   taskInclude,
   type CreateTaskInput,
+  type DateWindow,
   type TaskFilter,
   type TaskWithRelations,
   type UpdateTaskInput,
 } from "@/lib/task-types";
+import { toDateOnly } from "@/lib/date-only";
 import type { Prisma } from "@/generated/prisma/client";
 
 /**
@@ -27,34 +29,46 @@ function overlapsRange(from: Date, to: Date): Prisma.TaskWhereInput[] {
   ];
 }
 
+/**
+ * 종일과 시간 지정을 각자의 기준으로 비교한다.
+ * - 시간 지정: 로컬 하루의 시작/끝 instant
+ * - 종일: 달력 날짜의 UTC 자정 (떠 있는 날짜)
+ * 한 기준으로 묶으면 UTC-오프셋이 음수인 지역에서 하루가 어긋난다.
+ */
+function windowClauses(
+  w: DateWindow,
+  extra?: (allDay: boolean, from: Date, to: Date) => Prisma.TaskWhereInput[],
+): Prisma.TaskWhereInput[] {
+  const variants: { allDay: boolean; from: Date; to: Date }[] = [
+    { allDay: false, from: new Date(w.start), to: new Date(w.end) },
+    { allDay: true, from: toDateOnly(w.dateFrom), to: toDateOnly(w.dateTo) },
+  ];
+  return variants.map(({ allDay, from, to }) => ({
+    allDay,
+    OR: [...overlapsRange(from, to), ...(extra?.(allDay, from, to) ?? [])],
+  }));
+}
+
 function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInput {
   const base: Prisma.TaskWhereInput = { userId, parentId: null };
   switch (filter.kind) {
-    case "today": {
-      const from = new Date(filter.start);
-      const to = new Date(filter.end);
+    case "today":
       return {
         ...base,
         status: "todo",
-        OR: [
+        OR: windowClauses(filter, (_allDay, from, to) => [
           { dueAt: { lt: from } }, // 지연됨
           { dueAt: null, startAt: { lte: to } }, // 마감 없이 시작만 지정
-          ...overlapsRange(from, to),
-        ],
+        ]),
       };
-    }
-    case "range": {
-      const from = new Date(filter.from);
-      const to = new Date(filter.to);
+    case "range":
       return {
         ...base,
         status: "todo",
-        OR: [
+        OR: windowClauses(filter, (_allDay, from, to) => [
           { dueAt: null, startAt: { gte: from, lte: to } },
-          ...overlapsRange(from, to),
-        ],
+        ]),
       };
-    }
     case "unscheduled":
       return { ...base, status: "todo", dueAt: null, startAt: null };
     case "all":

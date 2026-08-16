@@ -6,19 +6,29 @@ import {
   isToday,
   isTomorrow,
   isYesterday,
+  startOfDay,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import { forDisplay } from "@/lib/timezone";
 
-export function formatDue(dueAt: Date, allDay: boolean): string {
-  let day: string;
-  if (isToday(dueAt)) day = "오늘";
-  else if (isTomorrow(dueAt)) day = "내일";
-  else if (isYesterday(dueAt)) day = "어제";
-  else if (isThisYear(dueAt)) day = format(dueAt, "M월 d일 (EEE)", { locale: ko });
-  else day = format(dueAt, "yyyy년 M월 d일", { locale: ko });
+/**
+ * 종일 값은 "떠 있는 날짜"(UTC 자정)로 저장되므로 표시 전에 로컬 달력 날짜로
+ * 환산해야 한다. forDisplay가 그 환산을 담당한다(자세한 규칙은 lib/timezone.ts).
+ */
+/** 시각은 빼고 날짜만 (예: "오늘", "8월 20일 (목)") */
+export function formatDayLabel(value: Date, allDay: boolean): string {
+  const d = forDisplay(value, allDay);
+  if (isToday(d)) return "오늘";
+  if (isTomorrow(d)) return "내일";
+  if (isYesterday(d)) return "어제";
+  if (isThisYear(d)) return format(d, "M월 d일 (EEE)", { locale: ko });
+  return format(d, "yyyy년 M월 d일", { locale: ko });
+}
 
+export function formatDue(value: Date, allDay: boolean): string {
+  const day = formatDayLabel(value, allDay);
   if (allDay) return day;
-  return `${day} ${format(dueAt, "a h:mm", { locale: ko })}`;
+  return `${day} ${format(value, "a h:mm", { locale: ko })}`;
 }
 
 /** 시작/마감을 함께 고려한 일정 요약. 예: "오늘 오후 3:00–5:00", "내일 오후 2:00 시작" */
@@ -28,8 +38,12 @@ export function formatSchedule(
   allDay: boolean,
 ): string | null {
   if (startAt && dueAt) {
-    if (isSameDay(startAt, dueAt) && !allDay) {
-      return `${formatDue(startAt, false)}–${format(dueAt, "a h:mm", { locale: ko })}`;
+    const s = forDisplay(startAt, allDay);
+    const e = forDisplay(dueAt, allDay);
+    if (isSameDay(s, e)) {
+      return allDay
+        ? formatDue(startAt, true)
+        : `${formatDue(startAt, false)}–${format(e, "a h:mm", { locale: ko })}`;
     }
     return `${formatDue(startAt, allDay)} → ${formatDue(dueAt, allDay)}`;
   }
@@ -39,7 +53,10 @@ export function formatSchedule(
 }
 
 export function isOverdue(dueAt: Date, allDay: boolean): boolean {
-  if (allDay) return isPast(dueAt) && !isToday(dueAt);
+  if (allDay) {
+    // 종일은 그 날이 지나야 지연
+    return forDisplay(dueAt, true) < startOfDay(new Date());
+  }
   return isPast(dueAt);
 }
 

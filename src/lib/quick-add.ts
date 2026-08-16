@@ -1,5 +1,6 @@
 import * as chrono from "chrono-node";
 import { addDays, nextDay, set, startOfDay, type Day } from "date-fns";
+import { toFloatingDate } from "@/lib/timezone";
 
 export interface ParsedQuickAdd {
   title: string;
@@ -190,11 +191,12 @@ export function parseQuickAdd(text: string, now = new Date()): ParsedQuickAdd {
   }
 
   // --- 조합 ---
+  // 시간이 있으면 시각(instant), 없으면 떠 있는 날짜(UTC 자정)로 만든다.
   let dueAt: Date | null = null;
   if (datePart && hasTime) {
     dueAt = set(datePart, { hours: hour, minutes: minute });
   } else if (datePart) {
-    dueAt = datePart;
+    dueAt = toFloatingDate(datePart);
   } else if (hasTime) {
     // 시간만 있으면 오늘(이미 지났으면 내일)
     let d = set(startOfDay(now), { hours: hour, minutes: minute });
@@ -202,7 +204,7 @@ export function parseQuickAdd(text: string, now = new Date()): ParsedQuickAdd {
     dueAt = d;
   } else if (rrule) {
     // 반복만 있으면 오늘부터 시작
-    dueAt = startOfDay(now);
+    dueAt = toFloatingDate(now);
   }
 
   return {

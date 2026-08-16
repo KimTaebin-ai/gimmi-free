@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 일회성 유지보수 스크립트 — node로 직접 실행하는 CommonJS
+    "scripts/**",
   ]),
 ]);
 

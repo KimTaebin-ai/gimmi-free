@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { describeRrule, formatDue, RRULE_PRESETS } from "@/lib/format-date";
+import { describeRrule, formatDayLabel, RRULE_PRESETS } from "@/lib/format-date";
+import { forDisplay, toFloatingDate } from "@/lib/timezone";
 import {
   useCreateTask,
   useDeleteTask,
@@ -54,40 +55,49 @@ export function TaskDetail({
   const patch = (input: Parameters<typeof update.mutate>[0]["input"]) =>
     update.mutate({ id: task.id, input });
 
+  // 날짜 선택기는 로컬 Date를 주고받는다. 종일 값은 떠 있는 날짜(UTC 자정)로
+  // 저장해야 타임존이 바뀌어도 날짜가 밀리지 않는다. (lib/timezone.ts 참고)
   function withTime(base: Date, value: string): Date {
     const [h, m] = value.split(":").map(Number);
     return set(base, { hours: h, minutes: m, seconds: 0, milliseconds: 0 });
   }
 
+  /** 시간 없는 상태에서 시간을 붙일 때의 기준 시각 */
+  function instantBase(value: Date | null): Date {
+    if (!value) return startOfDay(new Date());
+    return task.allDay ? forDisplay(value, true) : value;
+  }
+
   function setStartDate(date: Date | undefined) {
     if (!date) return patch({ startAt: null });
+    if (task.allDay) return patch({ startAt: toFloatingDate(date) });
     const prev = task.startAt;
     patch({
-      startAt:
-        prev && !task.allDay
-          ? set(date, { hours: prev.getHours(), minutes: prev.getMinutes() })
-          : startOfDay(date),
+      startAt: prev
+        ? set(date, { hours: prev.getHours(), minutes: prev.getMinutes() })
+        : startOfDay(date),
     });
   }
 
   function setStartTime(value: string) {
-    const base = task.startAt ?? task.dueAt ?? new Date();
-    if (!value) return patch({ startAt: startOfDay(base) });
+    const base = instantBase(task.startAt ?? task.dueAt);
+    if (!value) return patch({ startAt: toFloatingDate(base) });
     patch({ startAt: withTime(base, value), allDay: false });
   }
 
   function setDueDate(date: Date | undefined) {
     if (!date) return patch({ dueAt: null, allDay: task.startAt ? task.allDay : true });
-    if (task.dueAt && !task.allDay) {
-      patch({ dueAt: set(date, { hours: task.dueAt.getHours(), minutes: task.dueAt.getMinutes() }) });
-    } else {
-      patch({ dueAt: startOfDay(date) });
-    }
+    if (task.allDay) return patch({ dueAt: toFloatingDate(date) });
+    patch({
+      dueAt: task.dueAt
+        ? set(date, { hours: task.dueAt.getHours(), minutes: task.dueAt.getMinutes() })
+        : startOfDay(date),
+    });
   }
 
   function setDueTime(value: string) {
-    const base = task.dueAt ?? task.startAt ?? startOfDay(new Date());
-    if (!value) return patch({ dueAt: startOfDay(base), allDay: true });
+    const base = instantBase(task.dueAt ?? task.startAt);
+    if (!value) return patch({ dueAt: toFloatingDate(base), allDay: true });
     patch({ dueAt: withTime(base, value), allDay: false });
   }
 
@@ -171,13 +181,13 @@ export function TaskDetail({
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 flex-1 justify-start font-normal">
                     <CalendarDays className="size-3.5" />
-                    {row.value ? formatDue(row.value, true) : "날짜 없음"}
+                    {row.value ? formatDayLabel(row.value, task.allDay) : "날짜 없음"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={row.value ?? undefined}
+                    selected={row.value ? forDisplay(row.value, task.allDay) : undefined}
                     onSelect={row.setDate}
                   />
                 </PopoverContent>
