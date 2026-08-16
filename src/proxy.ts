@@ -17,5 +17,8 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|ico|webmanifest)).*)"],
+  // api/auth = Auth.js 핸들러, api/cron = Vercel Cron(자체 시크릿으로 보호)
+  matcher: [
+    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|ico|webmanifest)).*)",
+  ],
 };
