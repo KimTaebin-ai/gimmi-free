@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { differenceInMinutes, format, isToday, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
-  buildColorIndex,
   groupItemsByDay,
   isMultiDay,
   itemAppearance,
@@ -13,7 +12,6 @@ import {
   weekSegments,
 } from "@/components/calendar/shared";
 import { CalendarClock } from "lucide-react";
-import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const HOUR_HEIGHT = 48; // px
@@ -92,7 +90,6 @@ export function TimeGridView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
-  const colorIndex = buildColorIndex(items);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 처음 열 때 오전 7시가 보이도록
@@ -141,14 +138,14 @@ export function TimeGridView({
               ))}
             </div>
             <div
-              className="relative grid gap-y-px py-0.5"
+              className="relative grid gap-y-1 py-1"
               style={{
                 gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`,
-                gridAutoRows: "17px",
+                gridAutoRows: "20px",
               }}
             >
               {segments.map((seg) => {
-                const look = itemAppearance(seg.item, colorIndex);
+                const look = itemAppearance(seg.item);
                 return (
                 <button
                   key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
@@ -156,15 +153,15 @@ export function TimeGridView({
                   style={{
                     gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
                     gridRow: seg.lane + 1,
-                    ...(look.color
+                    boxShadow: `inset 3px 0 0 0 ${look.barColor}`,
+                    ...(look.tint
                       ? {
-                          backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
-                          boxShadow: `inset 2px 0 0 0 ${look.color}`,
+                          backgroundColor: `color-mix(in oklab, ${look.barColor} 14%, transparent)`,
                         }
                       : {}),
                   }}
                   className={cn(
-                    "mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
+                    "mx-0.5 flex min-w-0 items-center overflow-hidden py-0.5 pl-2 pr-1 text-[10px] leading-4",
                     look.className,
                     seg.isStart ? "rounded-l" : "rounded-l-none",
                     seg.isEnd ? "rounded-r" : "rounded-r-none",
@@ -174,10 +171,8 @@ export function TimeGridView({
                 >
                   {seg.isStart || seg.isEnd ? (
                     <>
-                      {seg.item.kind === "task" ? (
-                        <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
-                      ) : (
-                        <CalendarClock className="mr-0.5 size-2.5 shrink-0 opacity-60" />
+                      {seg.item.kind === "event" && (
+                        <CalendarClock className="mr-1 size-2.5 shrink-0 opacity-60" />
                       )}
                       <span className="truncate">{seg.item.title}</span>
                     </>
@@ -230,7 +225,7 @@ export function TimeGridView({
                   </div>
                 )}
                 {positioned.map((p) => {
-                  const look = itemAppearance(p.item, colorIndex);
+                  const look = itemAppearance(p.item);
                   return (
                   <button
                     key={`${p.item.kind}-${p.item.id}`}
@@ -240,22 +235,18 @@ export function TimeGridView({
                       height: Math.max(p.height, 16),
                       left: `${(p.column / p.columns) * 100}%`,
                       width: `${(1 / p.columns) * 100}%`,
-                      ...(look.color
-                        ? {
-                            backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
-                            boxShadow: `inset 2px 0 0 0 ${look.color}`,
-                          }
-                        : {}),
+                      // 시간 블록은 서로 붙지 않게 살짝 띄운다
+                      padding: "2px 4px 2px 8px",
+                      boxShadow: `inset 3px 0 0 0 ${look.barColor}`,
+                      backgroundColor: `color-mix(in oklab, ${look.barColor} 12%, var(--card))`,
                     }}
                     className={cn(
-                      "absolute overflow-hidden rounded px-1 py-px text-left text-[10px] leading-tight",
+                      "absolute mr-0.5 overflow-hidden rounded text-left text-[10px] leading-tight",
                       look.className,
                     )}
                   >
                     <span className="flex min-w-0 items-center gap-0.5 font-medium">
-                      {p.item.kind === "task" ? (
-                        <PriorityFlag priority={p.item.priority} className="size-2.5" />
-                      ) : (
+                      {p.item.kind === "event" && (
                         <CalendarClock className="size-2.5 shrink-0 opacity-60" />
                       )}
                       <span className="truncate">{p.item.title}</span>

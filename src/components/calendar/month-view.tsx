@@ -13,20 +13,17 @@ import {
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
-  buildColorIndex,
   itemAppearance,
   layoutSpans,
   weekSegments,
   type ItemSpan,
-  type ColorIndex,
 } from "@/components/calendar/shared";
 import { CalendarClock } from "lucide-react";
-import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const MAX_LANES = 3; // 이보다 아래 레인은 "+N개"로 접는다
-const LANE_HEIGHT = 17; // px
+const LANE_HEIGHT = 20; // px — 항목 사이에 숨 쉴 틈을 준다
 
 export function MonthView({
   anchor,
@@ -49,7 +46,6 @@ export function MonthView({
   );
 
   const spans = useMemo(() => layoutSpans(items, days), [items, days]);
-  const colorIndex = useMemo(() => buildColorIndex(items), [items]);
   const weekCount = days.length / 7;
 
   // 레인이 넘쳐 숨겨진 아이템 수를 날짜별로 집계
@@ -89,7 +85,6 @@ export function MonthView({
             weekIndex={w}
             days={days.slice(w * 7, w * 7 + 7)}
             spans={spans}
-            colorIndex={colorIndex}
             hidden={hiddenPerDay.slice(w * 7, w * 7 + 7)}
             anchor={anchor}
             onSelectItem={onSelectItem}
@@ -105,7 +100,6 @@ function WeekRow({
   weekIndex,
   days,
   spans,
-  colorIndex,
   hidden,
   anchor,
   onSelectItem,
@@ -114,7 +108,6 @@ function WeekRow({
   weekIndex: number;
   days: Date[];
   spans: ItemSpan[];
-  colorIndex: ColorIndex;
   hidden: number[];
   anchor: Date;
   onSelectItem: (item: CalendarItem) => void;
@@ -156,7 +149,7 @@ function WeekRow({
 
       {/* 일정 바 레이어 — 날짜 숫자 아래에 겹쳐 그린다 */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-6 grid grid-cols-7 gap-y-px"
+        className="pointer-events-none absolute inset-x-0 top-6 grid grid-cols-7 gap-y-1"
         style={{ gridAutoRows: `${LANE_HEIGHT}px` }}
       >
         {segments.map((seg) => {
@@ -165,7 +158,7 @@ function WeekRow({
           const showTitle = seg.isStart || seg.isEnd;
           const alignEnd = seg.isEnd && !seg.isStart;
           const timed = !seg.item.allDay && seg.isStart && seg.colSpan === 1;
-          const look = itemAppearance(seg.item, colorIndex);
+          const look = itemAppearance(seg.item);
           return (
             <button
               key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
@@ -176,16 +169,16 @@ function WeekRow({
               style={{
                 gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
                 gridRow: seg.lane + 1,
-                // 태스크는 식별 색을 옅은 배경 + 진한 왼쪽 막대로
-                ...(look.color
+                // 왼쪽 띠 = 우선순위. 여러 날에 걸친 항목만 옅은 배경으로 구간을 보여준다.
+                boxShadow: `inset 3px 0 0 0 ${look.barColor}`,
+                ...(look.tint
                   ? {
-                      backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
-                      boxShadow: `inset 2px 0 0 0 ${look.color}`,
+                      backgroundColor: `color-mix(in oklab, ${look.barColor} 14%, transparent)`,
                     }
                   : {}),
               }}
               className={cn(
-                "pointer-events-auto mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
+                "pointer-events-auto mx-0.5 flex min-w-0 items-center overflow-hidden py-0.5 pl-2 pr-1 text-[10px] leading-4",
                 look.className,
                 // 잘린 쪽은 각지게 둬서 이어지는 느낌을 준다
                 seg.isStart ? "rounded-l" : "rounded-l-none",
@@ -196,10 +189,8 @@ function WeekRow({
             >
               {showTitle ? (
                 <>
-                  {seg.item.kind === "task" ? (
-                    <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
-                  ) : (
-                    <CalendarClock className="mr-0.5 size-2.5 shrink-0 opacity-60" />
+                  {seg.item.kind === "event" && (
+                    <CalendarClock className="mr-1 size-2.5 shrink-0 opacity-60" />
                   )}
                   <span className="truncate">
                     {timed && (

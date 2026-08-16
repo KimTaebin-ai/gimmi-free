@@ -4,12 +4,7 @@ import { format, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CalendarClock, CheckSquare, Clock, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  buildColorIndex,
-  groupItemsByDay,
-  itemDotStyle,
-} from "@/components/calendar/shared";
-import { PriorityFlag } from "@/components/priority-flag";
+import { groupItemsByDay, itemDotStyle } from "@/components/calendar/shared";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 export function AgendaView({
@@ -20,7 +15,6 @@ export function AgendaView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
-  const colorIndex = buildColorIndex(items);
   const days = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   if (days.length === 0) {
@@ -52,7 +46,7 @@ export function AgendaView({
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               {dayItems.map((item) => {
-                const dot = itemDotStyle(item, colorIndex);
+                const dot = itemDotStyle(item);
                 return (
                 <button
                   key={`${item.kind}-${item.id}`}
@@ -60,8 +54,8 @@ export function AgendaView({
                   className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/50"
                 >
                   <span
-                    className={cn("mt-1.5 size-2 shrink-0 rounded-full", dot.className)}
-                    style={dot.color ? { backgroundColor: dot.color } : undefined}
+                    className="mt-1.5 size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: dot.color }}
                   />
                   <div className="min-w-0 flex-1">
                     <div
@@ -72,9 +66,7 @@ export function AgendaView({
                           "text-muted-foreground line-through",
                       )}
                     >
-                      {item.kind === "task" ? (
-                        <PriorityFlag priority={item.priority} className="size-3" />
-                      ) : (
+                      {item.kind === "event" && (
                         <CalendarClock className="size-3 shrink-0 text-muted-foreground" />
                       )}
                       <span className="truncate">{item.title}</span>

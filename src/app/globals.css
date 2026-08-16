@@ -102,6 +102,14 @@
   --task-6: #008300;
   --task-7: #4a3aa7;
   --task-8: #e34948;
+
+  /* 우선순위 색 — 캘린더 왼쪽 띠 전용(목록의 식별 색과 별개).
+     validate_palette 전 항목 통과(all-pairs). amber만 흰 배경 대비 2.17로 WARN이라
+     항목 제목을 항상 함께 노출해 색만으로 의미를 전달하지 않는다. */
+  --priority-high: #e34948;
+  --priority-mid: #eda100;
+  --priority-low: #2a78d6;
+  --priority-none: #c3c2b7;
 }
 
 .dark {
@@ -155,6 +163,13 @@
   --task-6: #008300;
   --task-7: #9085e9;
   --task-8: #e66767;
+
+  /* 다크에서는 #e66767(red)과 amber가 일반시야 ΔE 13으로 구분이 안 돼(기준 15) 실패했다.
+     빨강을 #d94a6a로 옮겨 전 항목 통과(일반시야 17.9 / CVD 10.6). */
+  --priority-high: #d94a6a;
+  --priority-mid: #c98500;
+  --priority-low: #3987e5;
+  --priority-none: #4a4a48;
 }
 
 @layer base {
