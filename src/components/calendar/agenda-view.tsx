@@ -4,7 +4,11 @@ import { format, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { CheckSquare, Clock, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { groupItemsByDay, itemDotColor } from "@/components/calendar/shared";
+import {
+  buildTaskColorIndex,
+  groupItemsByDay,
+  itemDotStyle,
+} from "@/components/calendar/shared";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 export function AgendaView({
@@ -15,6 +19,7 @@ export function AgendaView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
+  const colorIndex = buildTaskColorIndex(items);
   const days = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   if (days.length === 0) {
@@ -45,14 +50,17 @@ export function AgendaView({
               </div>
             </div>
             <div className="min-w-0 flex-1 space-y-1">
-              {dayItems.map((item) => (
+              {dayItems.map((item) => {
+                const dot = itemDotStyle(item, colorIndex);
+                return (
                 <button
                   key={`${item.kind}-${item.id}`}
                   onClick={() => onSelectItem(item)}
                   className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/50"
                 >
                   <span
-                    className={cn("mt-1.5 size-2 shrink-0 rounded-full", itemDotColor(item))}
+                    className={cn("mt-1.5 size-2 shrink-0 rounded-full", dot.className)}
+                    style={dot.color ? { backgroundColor: dot.color } : undefined}
                   />
                   <div className="min-w-0 flex-1">
                     <div
@@ -87,7 +95,8 @@ export function AgendaView({
                     </div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

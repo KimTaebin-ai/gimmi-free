@@ -13,10 +13,12 @@ import {
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
-  itemColor,
+  buildTaskColorIndex,
+  itemAppearance,
   layoutSpans,
   weekSegments,
   type ItemSpan,
+  type TaskColorIndex,
 } from "@/components/calendar/shared";
 import type { CalendarItem } from "@/lib/calendar-types";
 
@@ -45,6 +47,7 @@ export function MonthView({
   );
 
   const spans = useMemo(() => layoutSpans(items, days), [items, days]);
+  const colorIndex = useMemo(() => buildTaskColorIndex(items), [items]);
   const weekCount = days.length / 7;
 
   // 레인이 넘쳐 숨겨진 아이템 수를 날짜별로 집계
@@ -84,6 +87,7 @@ export function MonthView({
             weekIndex={w}
             days={days.slice(w * 7, w * 7 + 7)}
             spans={spans}
+            colorIndex={colorIndex}
             hidden={hiddenPerDay.slice(w * 7, w * 7 + 7)}
             anchor={anchor}
             onSelectItem={onSelectItem}
@@ -99,6 +103,7 @@ function WeekRow({
   weekIndex,
   days,
   spans,
+  colorIndex,
   hidden,
   anchor,
   onSelectItem,
@@ -107,6 +112,7 @@ function WeekRow({
   weekIndex: number;
   days: Date[];
   spans: ItemSpan[];
+  colorIndex: TaskColorIndex;
   hidden: number[];
   anchor: Date;
   onSelectItem: (item: CalendarItem) => void;
@@ -157,6 +163,7 @@ function WeekRow({
           const showTitle = seg.isStart || seg.isEnd;
           const alignEnd = seg.isEnd && !seg.isStart;
           const timed = !seg.item.allDay && seg.isStart && seg.colSpan === 1;
+          const look = itemAppearance(seg.item, colorIndex);
           return (
             <button
               key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
@@ -167,10 +174,17 @@ function WeekRow({
               style={{
                 gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
                 gridRow: seg.lane + 1,
+                // 태스크는 식별 색을 옅은 배경 + 진한 왼쪽 막대로
+                ...(look.color
+                  ? {
+                      backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
+                      boxShadow: `inset 2px 0 0 0 ${look.color}`,
+                    }
+                  : {}),
               }}
               className={cn(
                 "pointer-events-auto mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
-                itemColor(seg.item),
+                look.className,
                 // 잘린 쪽은 각지게 둬서 이어지는 느낌을 준다
                 seg.isStart ? "rounded-l" : "rounded-l-none",
                 seg.isEnd ? "rounded-r" : "rounded-r-none",

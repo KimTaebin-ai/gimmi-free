@@ -4,9 +4,10 @@ import { useEffect, useRef } from "react";
 import { differenceInMinutes, format, isToday, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
+  buildTaskColorIndex,
   groupItemsByDay,
   isMultiDay,
-  itemColor,
+  itemAppearance,
   itemsForDay,
   layoutSpans,
   weekSegments,
@@ -89,6 +90,7 @@ export function TimeGridView({
   onSelectItem: (item: CalendarItem) => void;
 }) {
   const grouped = groupItemsByDay(items);
+  const colorIndex = buildTaskColorIndex(items);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 처음 열 때 오전 7시가 보이도록
@@ -143,17 +145,25 @@ export function TimeGridView({
                 gridAutoRows: "17px",
               }}
             >
-              {segments.map((seg) => (
+              {segments.map((seg) => {
+                const look = itemAppearance(seg.item, colorIndex);
+                return (
                 <button
                   key={`${seg.item.kind}-${seg.item.id}-${seg.colStart}`}
                   onClick={() => onSelectItem(seg.item)}
                   style={{
                     gridColumn: `${seg.colStart + 1} / span ${seg.colSpan}`,
                     gridRow: seg.lane + 1,
+                    ...(look.color
+                      ? {
+                          backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
+                          boxShadow: `inset 2px 0 0 0 ${look.color}`,
+                        }
+                      : {}),
                   }}
                   className={cn(
                     "mx-0.5 flex min-w-0 items-center overflow-hidden px-1 text-[10px] leading-4",
-                    itemColor(seg.item),
+                    look.className,
                     seg.isStart ? "rounded-l" : "rounded-l-none",
                     seg.isEnd ? "rounded-r" : "rounded-r-none",
                     seg.isEnd && !seg.isStart && "justify-end",
@@ -166,7 +176,8 @@ export function TimeGridView({
                     <span className="sr-only">{seg.item.title}</span>
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -209,7 +220,9 @@ export function TimeGridView({
                     <span className="absolute -left-1 -top-1 size-2 rounded-full bg-red-500" />
                   </div>
                 )}
-                {positioned.map((p) => (
+                {positioned.map((p) => {
+                  const look = itemAppearance(p.item, colorIndex);
+                  return (
                   <button
                     key={`${p.item.kind}-${p.item.id}`}
                     onClick={() => onSelectItem(p.item)}
@@ -218,10 +231,16 @@ export function TimeGridView({
                       height: Math.max(p.height, 16),
                       left: `${(p.column / p.columns) * 100}%`,
                       width: `${(1 / p.columns) * 100}%`,
+                      ...(look.color
+                        ? {
+                            backgroundColor: `color-mix(in oklab, ${look.color} 18%, transparent)`,
+                            boxShadow: `inset 2px 0 0 0 ${look.color}`,
+                          }
+                        : {}),
                     }}
                     className={cn(
-                      "absolute overflow-hidden rounded border-l-2 border-current px-1 py-px text-left text-[10px] leading-tight",
-                      itemColor(p.item),
+                      "absolute overflow-hidden rounded px-1 py-px text-left text-[10px] leading-tight",
+                      look.className,
                     )}
                   >
                     <span className="block truncate font-medium">{p.item.title}</span>
@@ -231,7 +250,8 @@ export function TimeGridView({
                       </span>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             );
           })}

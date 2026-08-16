@@ -121,14 +121,27 @@ export async function refreshGrowthSummary(): Promise<GrowthResponse> {
     return { ok: true, data: toResult(saved, false) };
   } catch (err) {
     console.error("[growth] 요약 생성 실패:", err);
-    return {
-      ok: false,
-      error: {
-        reason: "error",
-        message: err instanceof Error ? err.message : "알 수 없는 오류가 발생했어요.",
-      },
-    };
+    return { ok: false, error: { reason: "error", message: explainApiError(err) } };
   }
+}
+
+/** Anthropic API 오류를 사용자가 무엇을 해야 할지 알 수 있는 문장으로 */
+function explainApiError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+
+  if (/credit balance is too low/i.test(raw)) {
+    return "Anthropic 계정에 크레딧이 없습니다. console.anthropic.com 의 Plans & Billing에서 크레딧을 충전한 뒤 다시 시도해 주세요.";
+  }
+  if (/authentication|invalid x-api-key/i.test(raw)) {
+    return "ANTHROPIC_API_KEY가 올바르지 않습니다. 키를 다시 확인해 주세요.";
+  }
+  if (/rate limit/i.test(raw)) {
+    return "요청이 잠시 몰렸습니다. 조금 뒤에 다시 시도해 주세요.";
+  }
+  if (/overloaded/i.test(raw)) {
+    return "Anthropic 서비스가 혼잡합니다. 잠시 후 다시 시도해 주세요.";
+  }
+  return raw.slice(0, 300);
 }
 
 /** 요약 근거가 될 기록이 얼마나 쌓였는지 (버튼 안내용) */
