@@ -43,6 +43,8 @@ src/
     quick-add.ts            # 퀵애드 자연어 파서(한국어 날짜/시간, #태그, !우선순위, 반복)
     smart-lists.ts          # 스마트 리스트 → TaskFilter 변환(날짜는 클라 타임존 기준)
     calendar-utils.ts       # [startAt, endAt) 반열린 구간 + 종일=UTC 자정 규칙
+    date-only.ts            # @db.Date 컬럼용. 날짜만 있는 값은 "yyyy-MM-dd"로 주고받고 UTC 자정 저장
+    fitness-stats.ts        # 1RM(Epley)·볼륨·부위별 집계·이동평균 (순수 함수, 테스트 대상)
     settings.ts             # User.settings(JSON) 읽기/쓰기
     google/
       tokens.ts             # access token 획득 + refresh(만료 시 Account 갱신)
@@ -62,7 +64,9 @@ src/
 - **Project**(리스트), **Tag**, **Task**(priority 0-3, status, startAt/dueAt, `rrule`, parentId 서브태스크,
   `googleEventId`, sortOrder), **TaskTag**
 - **CalendarEvent** — Google 이벤트 캐시(`googleEventId`, `source: google|task`, `lastSyncedAt`)
-- **WorkoutRoutine / RoutineExercise / Workout / WorkoutSet**
+- **Exercise** — 사용자별 종목 사전(`muscleGroup`으로 부위별 볼륨 집계). 기록은 이름으로 남으므로
+  사전을 지워도 과거 기록은 보존된다.
+- **WorkoutRoutine / RoutineExercise / Workout / WorkoutSet**(`exerciseOrder`로 종목 순서 유지)
 - **BodyMetric** — 날짜별 체중/골격근량/체지방률
 - **Food / Meal / MealItem** — 끼니(type: breakfast|lunch|dinner|snack) + 매크로
 
@@ -98,6 +102,9 @@ src/
 - 스키마 변경은 `npx prisma migrate dev --name <설명>`으로 마이그레이션 생성(스키마 직접 push 금지).
 - 모바일: 하단 탭바 5개(오늘/캘린더/피트니스/식단/더보기). PC: 3-pane(사이드바+메인+상세). 다크모드 지원.
 - 낙관적 UI: 태스크 완료 체크 등은 서버 응답 전 즉시 반영(TanStack Query mutation).
+- 차트: 색은 `globals.css`의 `--chart-*` CSS 변수로만 지정(테마 전환이 자동으로 따라감).
+  팔레트는 검증된 카테고리 슬롯 1~3이며 라이트/다크 모두 CVD 검사를 통과한 값이다.
+  **이중 축(y축 2개) 금지** — 단위가 다르면 차트를 나눈다(예: 체중·골격근량 kg / 체지방률 %).
 
 ## 로컬 개발
 
