@@ -31,7 +31,7 @@ import {
   useToggleTask,
   useUpdateTask,
 } from "@/hooks/use-tasks";
-import { PRIORITY_CHECKBOX } from "@/components/tasks/task-item";
+import { PRIORITY_STYLES } from "@/lib/task-colors";
 import type { TaskWithRelations } from "@/lib/task-types";
 
 export function TaskDetail({
@@ -121,11 +121,24 @@ export function TaskDetail({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-4 py-2">
-        <Checkbox
-          checked={task.status === "done"}
-          onCheckedChange={(v) => toggle.mutate({ id: task.id, done: v === true })}
-          className={cn("rounded-full", PRIORITY_CHECKBOX[task.priority])}
-        />
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={task.status === "done"}
+            onCheckedChange={(v) => toggle.mutate({ id: task.id, done: v === true })}
+            className="rounded-full"
+          />
+          {(() => {
+            const p = PRIORITY_STYLES[task.priority] ?? PRIORITY_STYLES[0];
+            if (!p.icon) return null;
+            const Icon = p.icon;
+            return (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Icon className={cn("size-3", p.className)} />
+                {p.label}
+              </span>
+            );
+          })()}
+        </div>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"

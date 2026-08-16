@@ -93,10 +93,12 @@ export async function listTasks(filter: TaskFilter): Promise<TaskWithRelations[]
       filter.kind === "done"
         ? [{ completedAt: "desc" }]
         : dateOrdered
-          ? [
+          ? // 날짜 → 사용자가 직접 정한 순서 → 우선순위 순.
+            // sortOrder를 우선순위보다 앞에 둬야 그룹 안 드래그 정렬이 유지된다.
+            [
               { dueAt: { sort: "asc", nulls: "last" } },
-              { priority: "desc" },
               { sortOrder: "asc" },
+              { priority: "desc" },
               { createdAt: "asc" },
             ]
           : [{ sortOrder: "asc" }, { createdAt: "asc" }],

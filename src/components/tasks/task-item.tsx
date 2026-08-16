@@ -12,23 +12,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { describeRrule, formatSchedule, isOverdue } from "@/lib/format-date";
+import { PRIORITY_STYLES, taskColorVar } from "@/lib/task-colors";
 import type { TaskWithRelations } from "@/lib/task-types";
-
-export const PRIORITY_CHECKBOX: Record<number, string> = {
-  3: "border-red-500 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500",
-  2: "border-amber-500 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500",
-  1: "border-blue-500 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500",
-  0: "",
-};
 
 export function TaskItem({
   task,
+  index,
   selected,
   onSelect,
   onToggle,
   onDelete,
 }: {
   task: TaskWithRelations;
+  /** 목록에서의 위치 — 식별 색을 정한다(우선순위와 무관) */
+  index: number;
   selected: boolean;
   onSelect: (id: string) => void;
   onToggle: (id: string, done: boolean) => void;
@@ -36,25 +33,53 @@ export function TaskItem({
 }) {
   const done = task.status === "done";
   const subDone = task.subtasks.filter((s) => s.status === "done").length;
+  const priority = PRIORITY_STYLES[task.priority] ?? PRIORITY_STYLES[0];
+  const PriorityIcon = priority.icon;
+  const color = taskColorVar(index);
 
   return (
     <div
       className={cn(
-        "group/task relative flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-accent/50",
+        "group/task relative flex cursor-pointer items-start gap-2.5 rounded-md py-2.5 pl-2 pr-3 transition-colors hover:bg-accent/50",
         selected && "bg-accent",
       )}
       onClick={() => onSelect(task.id)}
     >
+      {/* 식별 색 막대 — 어떤 태스크인지 구분하는 용도 */}
+      <span
+        aria-hidden
+        className={cn(
+          "mt-0.5 w-1 shrink-0 self-stretch rounded-full transition-opacity",
+          done && "opacity-30",
+        )}
+        style={{ backgroundColor: color }}
+      />
+
       <Checkbox
         checked={done}
         onCheckedChange={(v) => onToggle(task.id, v === true)}
         onClick={(e) => e.stopPropagation()}
-        className={cn("mt-0.5 rounded-full", PRIORITY_CHECKBOX[task.priority])}
+        className="mt-0.5 rounded-full"
       />
+
       <div className="min-w-0 flex-1">
-        <div className={cn("truncate text-sm", done && "text-muted-foreground line-through")}>
-          {task.title}
+        <div className="flex items-center gap-1.5">
+          {PriorityIcon && (
+            <PriorityIcon
+              className={cn("size-3 shrink-0", priority.className)}
+              aria-label={`우선순위 ${priority.label}`}
+            />
+          )}
+          <span
+            className={cn(
+              "truncate text-sm",
+              done && "text-muted-foreground line-through",
+            )}
+          >
+            {task.title}
+          </span>
         </div>
+
         {(task.dueAt || task.startAt || task.tags.length > 0 || task.subtasks.length > 0 || task.rrule) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             {(task.dueAt || task.startAt) && (
@@ -88,6 +113,7 @@ export function TaskItem({
           </div>
         )}
       </div>
+
       {task.project && (
         <span className="mt-1 shrink-0 text-[10px] text-muted-foreground">
           {task.project.name}

@@ -42,10 +42,11 @@ export function TasksView() {
   const { data: tags } = useTags();
   const reorder = useReorderTasks(filter);
 
-  // 날짜 기반 리스트는 날짜 그룹 표시, 나머지는 드래그앤드롭 수동 정렬
+  // 날짜 기반 리스트는 날짜 그룹으로 묶어 보여준다
   const dateBased = eventRange !== null;
-  const reorderable =
-    !dateBased && !(selection.type === "smart" && selection.key === "done");
+  // 완료 목록만 빼고 어디서든 순서를 직접 정할 수 있다.
+  // 날짜 리스트에서는 같은 그룹 안에서만 이동한다(날짜 변경은 상세에서).
+  const reorderable = !(selection.type === "smart" && selection.key === "done");
 
   const selectedTask = tasks?.find((t) => t.id === selectedTaskId) ?? null;
 

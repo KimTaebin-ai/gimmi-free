@@ -12,7 +12,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -24,6 +23,8 @@ import { TaskItem } from "@/components/tasks/task-item";
 import { EventRow } from "@/components/tasks/event-row";
 import { useDeleteTask, useToggleTask } from "@/hooks/use-tasks";
 import { eventDayKeys } from "@/lib/calendar-utils";
+import { forDisplay } from "@/lib/timezone";
+import { applyScopedReorder } from "@/lib/task-colors";
 import type { TaskWithRelations } from "@/lib/task-types";
 import type { CalendarEventLite } from "@/lib/calendar-types";
 
@@ -37,7 +38,7 @@ interface TaskListProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   emptyMessage?: string;
-  /** 수동 정렬 리스트에서 드래그앤드롭 활성화 */
+  /** 드래그로 순서를 바꿨을 때. 그룹 안에서도 동작한다. */
   onReorder?: (orderedIds: string[]) => void;
   /** 날짜 기반 리스트에서 지연됨/오늘/내일/날짜별 그룹 헤더 표시 */
   groupByDate?: boolean;
@@ -46,13 +47,7 @@ interface TaskListProps {
   onSelectEvent?: (event: CalendarEventLite) => void;
 }
 
-function SortableRow({
-  id,
-  children,
-}: {
-  id: string;
-  children: React.ReactNode;
-}) {
+function SortableRow({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
   return (
@@ -75,17 +70,13 @@ function labelForDate(date: Date): string {
 }
 
 function taskGroupLabel(task: TaskWithRelations, today: Date): string {
-  const anchor = task.dueAt ?? task.startAt;
+  const due = task.dueAt ? forDisplay(task.dueAt, task.allDay) : null;
+  const start = task.startAt ? forDisplay(task.startAt, task.allDay) : null;
+  const anchor = due ?? start;
   if (!anchor) return "날짜 없음";
-  if (task.dueAt && task.dueAt < today && !isToday(task.dueAt)) return "지연됨";
+  if (due && due < today && !isToday(due)) return "지연됨";
   // 여러 날에 걸쳐 진행 중인 태스크는 마감일 그룹에 묻히지 않게 따로 묶는다
-  if (
-    task.startAt &&
-    task.dueAt &&
-    !isSameDay(task.startAt, task.dueAt) &&
-    task.startAt <= endOfDay(today) &&
-    task.dueAt >= today
-  ) {
+  if (start && due && !isSameDay(start, due) && start <= endOfDay(today) && due >= today) {
     return "진행 중";
   }
   return labelForDate(anchor);
@@ -121,11 +112,12 @@ export function TaskList({
     };
 
     for (const task of tasks) {
+      const anchor = task.startAt ?? task.dueAt;
       push(taskGroupLabel(task, today), {
         kind: "task",
         key: `task-${task.id}`,
         task,
-        sortAt: (task.startAt ?? task.dueAt)?.getTime() ?? 0,
+        sortAt: anchor ? forDisplay(anchor, task.allDay).getTime() : 0,
       });
     }
 
@@ -142,19 +134,11 @@ export function TaskList({
       }
     }
 
-    const ordered = [...byLabel.entries()].map(([label, rows]) => ({
-      label,
-      rows: rows.sort((a, b) => a.sortAt - b.sortAt),
-    }));
+    const ordered = [...byLabel.entries()].map(([label, rows]) => ({ label, rows }));
 
     // 지연됨 → 진행 중 → 날짜순
     const rank = (l: string) => (l === "지연됨" ? 0 : l === "진행 중" ? 1 : 2);
-    const dateOf = (rows: Row[]) =>
-      rows[0]?.kind === "task"
-        ? ((rows[0].task.dueAt ?? rows[0].task.startAt)?.getTime() ?? 0)
-        : rows[0]?.kind === "event"
-          ? rows[0].event.startAt.getTime()
-          : 0;
+    const dateOf = (rows: Row[]) => Math.min(...rows.map((r) => r.sortAt || Infinity));
     return ordered.sort((a, b) => {
       const r = rank(a.label) - rank(b.label);
       return r !== 0 ? r : dateOf(a.rows) - dateOf(b.rows);
@@ -179,10 +163,11 @@ export function TaskList({
     );
   }
 
-  const renderTask = (task: TaskWithRelations) => (
+  const renderTask = (task: TaskWithRelations, index: number) => (
     <TaskItem
       key={task.id}
       task={task}
+      index={index}
       selected={task.id === selectedId}
       onSelect={onSelect}
       onToggle={(id, done) => toggle.mutate({ id, done })}
@@ -193,57 +178,99 @@ export function TaskList({
     />
   );
 
-  const renderRow = (row: Row) =>
-    row.kind === "task" ? (
-      renderTask(row.task)
-    ) : (
-      <EventRow
-        key={row.key}
-        event={row.event}
-        onSelect={(e) => onSelectEvent?.(e)}
-      />
-    );
+  /**
+   * 드래그로 순서를 바꾼다. 그룹 안에서만 옮기고, 서버에는 화면 전체 순서를 보낸다.
+   * (그룹 밖으로 옮기는 건 날짜를 바꾸는 것이라 상세에서 처리한다.)
+   */
+  const handleDragEnd = (scopeIds: string[]) => (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id || !onReorder || !tasks) return;
+    const from = scopeIds.indexOf(String(active.id));
+    const to = scopeIds.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+
+    onReorder(applyScopedReorder(tasks.map((t) => t.id), scopeIds, from, to));
+  };
 
   if (groups) {
+    // 그룹마다 독립적인 정렬 컨텍스트 — 같은 날짜/우선순위 안에서 순서를 직접 정할 수 있다
+    let colorIndex = 0;
     return (
       <div className="flex flex-col p-1">
-        {groups.map((g) => (
-          <div key={g.label}>
-            <p
-              className={cn(
-                "px-3 pb-1 pt-3 text-xs font-semibold",
-                g.label === "지연됨" ? "text-red-500" : "text-muted-foreground",
+        {groups.map((g) => {
+          const taskIds = g.rows
+            .filter((r): r is Extract<Row, { kind: "task" }> => r.kind === "task")
+            .map((r) => r.task.id);
+          const body = (
+            <div className="flex flex-col gap-0.5">
+              {g.rows.map((row) => {
+                if (row.kind === "event") {
+                  return (
+                    <EventRow
+                      key={row.key}
+                      event={row.event}
+                      onSelect={(e) => onSelectEvent?.(e)}
+                    />
+                  );
+                }
+                const node = renderTask(row.task, colorIndex++);
+                return onReorder && taskIds.length > 1 ? (
+                  <SortableRow key={row.key} id={row.task.id}>
+                    {node}
+                  </SortableRow>
+                ) : (
+                  <div key={row.key}>{node}</div>
+                );
+              })}
+            </div>
+          );
+
+          return (
+            <div key={g.label}>
+              <p
+                className={cn(
+                  "px-3 pb-1 pt-3 text-xs font-semibold",
+                  g.label === "지연됨" ? "text-red-500" : "text-muted-foreground",
+                )}
+              >
+                {g.label}
+                <span className="ml-1.5 font-normal text-muted-foreground/60">
+                  {g.rows.length}
+                </span>
+              </p>
+              {onReorder && taskIds.length > 1 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd(taskIds)}
+                >
+                  <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+                    {body}
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                body
               )}
-            >
-              {g.label}
-              <span className="ml-1.5 font-normal text-muted-foreground/60">
-                {g.rows.length}
-              </span>
-            </p>
-            <div className="flex flex-col gap-0.5">{g.rows.map(renderRow)}</div>
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     );
   }
 
   if (onReorder && tasks) {
     const ids = tasks.map((t) => t.id);
-    const handleDragEnd = (e: DragEndEvent) => {
-      const { active, over } = e;
-      if (!over || active.id === over.id) return;
-      const from = ids.indexOf(String(active.id));
-      const to = ids.indexOf(String(over.id));
-      if (from < 0 || to < 0) return;
-      onReorder(arrayMove(ids, from, to));
-    };
     return (
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd(ids)}
+      >
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-0.5 p-1">
-            {tasks.map((task) => (
+            {tasks.map((task, i) => (
               <SortableRow key={task.id} id={task.id}>
-                {renderTask(task)}
+                {renderTask(task, i)}
               </SortableRow>
             ))}
           </div>
@@ -253,6 +280,8 @@ export function TaskList({
   }
 
   return (
-    <div className="flex flex-col gap-0.5 p-1">{(tasks ?? []).map(renderTask)}</div>
+    <div className="flex flex-col gap-0.5 p-1">
+      {(tasks ?? []).map((task, i) => renderTask(task, i))}
+    </div>
   );
 }

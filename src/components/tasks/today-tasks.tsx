@@ -6,7 +6,7 @@ import { QuickAdd } from "@/components/tasks/quick-add";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import { CalendarItemDetail } from "@/components/calendar/item-detail";
-import { useTasks } from "@/hooks/use-tasks";
+import { useReorderTasks, useTasks } from "@/hooks/use-tasks";
 import { useEventsInRange } from "@/hooks/use-calendar";
 import { dateRangeForSelection, filterForSelection } from "@/lib/smart-lists";
 import { eventToCalendarItem } from "@/lib/calendar-types";
@@ -19,6 +19,7 @@ export function TodayTasks() {
   const range = useMemo(() => dateRangeForSelection(TODAY), []);
   const { data: tasks, isLoading } = useTasks(filter);
   const { data: events } = useEventsInRange(range);
+  const reorder = useReorderTasks(filter);
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventLite | null>(null);
@@ -36,6 +37,7 @@ export function TodayTasks() {
           groupByDate
           events={events}
           onSelectEvent={setSelectedEvent}
+          onReorder={(ids) => reorder.mutate(ids)}
           emptyMessage="오늘 할 일이 없어요 🎉"
         />
       </div>
