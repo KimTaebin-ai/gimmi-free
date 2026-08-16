@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { Sidebar, BottomTabBar } from "@/components/app-nav";
+import { Providers } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 
 export default async function AppLayout({
@@ -13,27 +14,31 @@ export default async function AppLayout({
   if (!session?.user) redirect("/login");
 
   return (
-    <div className="flex min-h-dvh">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-end gap-2 border-b px-4 py-2">
-          <span className="text-sm text-muted-foreground">
-            {session.user.email}
-          </span>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/login" });
-            }}
-          >
-            <Button variant="ghost" size="sm" type="submit">
-              로그아웃
-            </Button>
-          </form>
-        </header>
-        <main className="flex-1 p-4 pb-20 md:pb-4">{children}</main>
+    <Providers>
+      <div className="flex h-dvh">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-center justify-end gap-2 border-b px-4 py-2">
+            <span className="text-sm text-muted-foreground">
+              {session.user.email}
+            </span>
+            <form
+              action={async () => {
+                "use server";
+                await signOut({ redirectTo: "/login" });
+              }}
+            >
+              <Button variant="ghost" size="sm" type="submit">
+                로그아웃
+              </Button>
+            </form>
+          </header>
+          <main className="min-h-0 flex-1 overflow-y-auto pb-16 md:pb-0">
+            {children}
+          </main>
+        </div>
+        <BottomTabBar />
       </div>
-      <BottomTabBar />
-    </div>
+    </Providers>
   );
 }
