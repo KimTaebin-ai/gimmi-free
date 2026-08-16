@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Auth.js (NextAuth v5) ----------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  timezone      String    @default("Asia/Seoul")
+  settings      Json?
+
+  accounts       Account[]
+  sessions       Session[]
+  projects       Project[]
+  tags           Tag[]
+  tasks          Task[]
+  calendarEvents CalendarEvent[]
+  routines       WorkoutRoutine[]
+  workouts       Workout[]
+  bodyMetrics    BodyMetric[]
+  foods          Food[]
+  meals          Meal[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Tasks ----------
+
+model Project {
+  id        String  @id @default(cuid())
+  userId    String
+  name      String
+  color     String?
+  icon      String?
+  sortOrder Int     @default(0)
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([userId])
+}
+
+model Tag {
+  id     String  @id @default(cuid())
+  userId String
+  name   String
+  color  String?
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks TaskTag[]
+
+  @@unique([userId, name])
+}
+
+enum TaskStatus {
+  todo
+  done
+}
+
+model Task {
+  id            String     @id @default(cuid())
+  userId        String
+  projectId     String?
+  parentId      String?
+  title         String
+  note          String?
+  priority      Int        @default(0) // 0 none, 1 low, 2 medium, 3 high
+  status        TaskStatus @default(todo)
+  startAt       DateTime?
+  dueAt         DateTime?
+  allDay        Boolean    @default(true)
+  rrule         String?
+  completedAt   DateTime?
+  sortOrder     Int        @default(0)
+  googleEventId String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent   Task?     @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks Task[]    @relation("Subtasks")
+  tags     TaskTag[]
+
+  @@index([userId, status, dueAt])
+  @@index([userId, projectId])
+}
+
+model TaskTag {
+  taskId String
+  tagId  String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+}
+
+// ---------- Calendar ----------
+
+enum EventSource {
+  google
+  task
+}
+
+model CalendarEvent {
+  id            String      @id @default(cuid())
+  userId        String
+  googleEventId String
+  title         String
+  startAt       DateTime
+  endAt         DateTime
+  allDay        Boolean     @default(false)
+  location      String?
+  source        EventSource @default(google)
+  lastSyncedAt  DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, googleEventId])
+  @@index([userId, startAt])
+}
+
+// ---------- Fitness ----------
+
+model WorkoutRoutine {
+  id     String  @id @default(cuid())
+  userId String
+  name   String
+  note   String?
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises RoutineExercise[]
+  workouts  Workout[]
+
+  @@index([userId])
+}
+
+model RoutineExercise {
+  id           String @id @default(cuid())
+  routineId    String
+  exerciseName String
+  targetSets   Int
+  targetReps   Int
+  order        Int    @default(0)
+
+  routine WorkoutRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+}
+
+model Workout {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  routineId String?
+  note      String?
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routine WorkoutRoutine? @relation(fields: [routineId], references: [id], onDelete: SetNull)
+  sets    WorkoutSet[]
+
+  @@index([userId, date])
+}
+
+model WorkoutSet {
+  id           String @id @default(cuid())
+  workoutId    String
+  exerciseName String
+  setNo        Int
+  reps         Int
+  weightKg     Float
+
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+}
+
+model BodyMetric {
+  id               String   @id @default(cuid())
+  userId           String
+  date             DateTime @db.Date
+  weightKg         Float?
+  skeletalMuscleKg Float?
+  bodyFatPct       Float?
+  note             String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+// ---------- Diet ----------
+
+model Food {
+  id             String  @id @default(cuid())
+  userId         String
+  name           String
+  kcalPer100g    Float?
+  proteinPer100g Float?
+  carbPer100g    Float?
+  fatPer100g     Float?
+  isFavorite     Boolean @default(false)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealItems MealItem[]
+
+  @@index([userId])
+}
+
+enum MealType {
+  breakfast
+  lunch
+  dinner
+  snack
+}
+
+model Meal {
+  id     String   @id @default(cuid())
+  userId String
+  date   DateTime @db.Date
+  type   MealType
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items MealItem[]
+
+  @@unique([userId, date, type])
+}
+
+model MealItem {
+  id       String  @id @default(cuid())
+  mealId   String
+  foodId   String?
+  name     String
+  amountG  Float?
+  kcal     Float   @default(0)
+  proteinG Float   @default(0)
+  carbG    Float   @default(0)
+  fatG     Float   @default(0)
+
+  meal Meal  @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id], onDelete: SetNull)
+}
