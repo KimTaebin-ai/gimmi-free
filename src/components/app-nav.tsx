@@ -10,13 +10,13 @@ import {
   MoreHorizontal,
   Salad,
   Sparkles,
-  Sun,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// '오늘'은 태스크 페이지에서 스마트 리스트로 언제든 볼 수 있어 내비게이션에서 뺐다.
+// (/today 라우트는 남아 있고 '더보기'에서 진입 가능)
 const items = [
   { href: "/", label: "성장", icon: Sparkles },
-  { href: "/today", label: "오늘", icon: Sun },
   { href: "/tasks", label: "태스크", icon: CheckSquare },
   { href: "/calendar", label: "캘린더", icon: CalendarDays },
   { href: "/fitness", label: "피트니스", icon: Dumbbell },
@@ -24,9 +24,8 @@ const items = [
   { href: "/more", label: "더보기", icon: MoreHorizontal },
 ];
 
-// 모바일 하단 탭바는 5개: 성장/오늘/캘린더/피트니스/더보기
-// (태스크·식단은 오늘/더보기에서 진입)
-const MOBILE_HREFS = ["/", "/today", "/calendar", "/fitness", "/more"];
+// 모바일 하단 탭바는 5개: 성장/태스크/캘린더/피트니스/더보기 (식단은 더보기에서)
+const MOBILE_HREFS = ["/", "/tasks", "/calendar", "/fitness", "/more"];
 const mobileItems = MOBILE_HREFS.map((h) => items.find((i) => i.href === h)!);
 
 function isActive(pathname: string, href: string) {

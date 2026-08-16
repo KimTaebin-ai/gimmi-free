@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { CheckSquare, ChevronRight, Mail, Settings } from "lucide-react";
+import { ChevronRight, Mail, Salad, Settings, Sun } from "lucide-react";
 
 const links = [
-  { href: "/tasks", label: "태스크", icon: CheckSquare, desc: "리스트·태그·스마트 리스트" },
+  { href: "/today", label: "오늘", icon: Sun, desc: "오늘 할 일과 일정만 모아 보기" },
+  { href: "/diet", label: "식단", icon: Salad, desc: "Phase 4에서 구현" },
   { href: "/mail", label: "메일", icon: Mail, desc: "Phase 5에서 구현" },
-  { href: "/settings", label: "설정", icon: Settings, desc: "Phase 6에서 구현" },
+  { href: "/settings", label: "설정", icon: Settings, desc: "시간대, Google 연동" },
 ];
 
 export default function MorePage() {

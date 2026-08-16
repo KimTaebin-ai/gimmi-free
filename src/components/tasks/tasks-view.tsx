@@ -29,7 +29,8 @@ import { eventToCalendarItem } from "@/lib/calendar-types";
 import type { CalendarEventLite } from "@/lib/calendar-types";
 
 export function TasksView() {
-  const [selection, setSelection] = useState<ListSelection>({ type: "smart", key: "today" });
+  // 기본은 '전체' — 오늘 할 일만 보는 것보다 전체를 조망하는 쪽이 기본값으로 낫다.
+  const [selection, setSelection] = useState<ListSelection>({ type: "smart", key: "all" });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventLite | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
