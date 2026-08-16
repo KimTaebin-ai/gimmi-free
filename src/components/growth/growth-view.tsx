@@ -1,0 +1,200 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { format, formatDistanceToNow } from "date-fns";
+import { ko } from "date-fns/locale";
+import {
+  ArrowUpRight,
+  CircleDashed,
+  Info,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  getGrowthSourceCount,
+  loadGrowthSummary,
+  refreshGrowthSummary,
+} from "@/lib/actions/growth";
+import { LEVEL_LABELS, type GainedCapability } from "@/lib/growth-types";
+
+const LEVEL_STYLES: Record<GainedCapability["level"], string> = {
+  newly_able: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  improved: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  practiced: "bg-muted text-muted-foreground",
+};
+
+export function GrowthView({ userName }: { userName: string }) {
+  const qc = useQueryClient();
+  const { data: result, isLoading } = useQuery({
+    queryKey: ["growth"],
+    queryFn: () => loadGrowthSummary(),
+  });
+  const { data: sourceCount } = useQuery({
+    queryKey: ["growth-source-count"],
+    queryFn: () => getGrowthSourceCount(),
+  });
+
+  const refresh = useMutation({
+    mutationFn: () => refreshGrowthSummary(),
+    onSuccess: (next) => qc.setQueryData(["growth"], next),
+  });
+
+  const summary = result?.ok ? result.data : null;
+  const error = result && !result.ok ? result.error : null;
+  const pending = refresh.isPending;
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5 p-4">
+      <header>
+        <h1 className="text-2xl font-bold">
+          {userName ? `${userName}님, ` : ""}무엇을 할 수 있게 되었나요?
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          노력은 시간을 쏟거나 일을 끝낸 것이 아니라,{" "}
+          <b className="text-foreground">이전에 할 수 없던 걸 할 수 있게 되는 것</b>입니다.
+          기록을 바탕으로 그 변화만 추려서 보여줍니다.
+        </p>
+      </header>
+
+      {/* 상태 + 갱신 */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+        <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+          {summary ? (
+            <>
+              <span className="text-foreground">
+                {format(new Date(summary.periodStart), "M월 d일", { locale: ko })} –{" "}
+                {format(new Date(summary.periodEnd), "M월 d일", { locale: ko })}
+              </span>{" "}
+              · 기록 {summary.sourceCount}건 ·{" "}
+              {formatDistanceToNow(new Date(summary.createdAt), {
+                addSuffix: true,
+                locale: ko,
+              })}{" "}
+              정리
+            </>
+          ) : (
+            <>지금 요약에 쓸 수 있는 기록 {sourceCount ?? 0}건</>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant={summary ? "outline" : "default"}
+          disabled={pending || (sourceCount ?? 0) === 0}
+          onClick={() => refresh.mutate()}
+        >
+          <RefreshCw className={cn("size-3.5", pending && "animate-spin")} />
+          {pending ? "정리하는 중…" : summary ? "다시 정리" : "요약 만들기"}
+        </Button>
+      </div>
+
+      {isLoading && <div className="h-48 animate-pulse rounded-lg bg-muted" />}
+
+      {error && !summary && (
+        <div className="flex items-start gap-2 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p>{error.message}</p>
+            {error.reason === "no_api_key" && (
+              <p className="mt-1 text-xs">
+                `.env`에 <code className="font-mono">ANTHROPIC_API_KEY</code>를 추가한 뒤 다시
+                시도해 주세요.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {summary && (
+        <div className="space-y-5">
+          {/* 한 문장 요약 */}
+          <p className="rounded-lg border-l-2 border-primary bg-muted/40 px-4 py-3 text-[15px] leading-relaxed">
+            {summary.content.headline}
+          </p>
+
+          {/* 새로 할 수 있게 된 것 — 이 화면의 본론 */}
+          <section>
+            <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Sparkles className="size-4 text-emerald-500" />
+              새로 할 수 있게 된 것
+              <span className="font-normal text-muted-foreground">
+                {summary.content.gained.length}
+              </span>
+            </h2>
+            {summary.content.gained.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                이 기간에는 새로 할 수 있게 된 것을 근거 있게 찾지 못했어요. 수업이나 세미나
+                기록에 &quot;느낀 점&quot;을 남기면 더 정확해집니다.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {summary.content.gained.map((g, i) => (
+                  <li key={i} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-medium">{g.title}</span>
+                      <Badge
+                        variant="secondary"
+                        className={cn("px-1.5 py-0 text-[10px]", LEVEL_STYLES[g.level])}
+                      >
+                        {LEVEL_LABELS[g.level]}
+                      </Badge>
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+                        {g.area}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      {g.evidence}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* 아직 쌓이는 중 */}
+          {summary.content.inProgress.length > 0 && (
+            <section>
+              <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+                <CircleDashed className="size-4 text-blue-500" />
+                아직 쌓이는 중
+              </h2>
+              <ul className="space-y-1.5">
+                {summary.content.inProgress.map((p, i) => (
+                  <li key={i} className="rounded-md border px-3 py-2">
+                    <span className="text-sm">{p.title}</span>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{p.why}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* 성장으로 이어지지 않은 것 — 솔직하게 */}
+          {summary.content.notGrowth.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+                해냈지만 새로운 능력으로는 이어지지 않은 일
+              </h2>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {summary.content.notGrowth.join(" · ")}
+              </p>
+            </section>
+          )}
+
+          {/* 다음 단계 */}
+          <section className="rounded-lg border p-3">
+            <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold">
+              <ArrowUpRight className="size-4" />
+              다음에 할 수 있게 되면 좋을 것
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {summary.content.nextStep}
+            </p>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}

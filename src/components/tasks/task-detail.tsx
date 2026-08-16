@@ -32,6 +32,7 @@ import {
   useUpdateTask,
 } from "@/hooks/use-tasks";
 import { PRIORITY_STYLES } from "@/lib/task-colors";
+import { TaskEntries } from "@/components/tasks/task-entries";
 import type { TaskWithRelations } from "@/lib/task-types";
 
 export function TaskDetail({
@@ -283,14 +284,17 @@ export function TaskDetail({
           className="h-8 text-sm"
         />
 
-        {/* 메모 */}
+        {/* 한 줄 메모 (긴 기록은 아래 '기록' 섹션에) */}
         <Textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onBlur={() => note !== (task.note ?? "") && patch({ note: note || null })}
-          placeholder="메모"
-          className="min-h-20 resize-none text-sm"
+          placeholder="한 줄 메모"
+          className="min-h-16 resize-none text-sm"
         />
+
+        {/* 메모 / 수업 스크립트 / 느낀 점 */}
+        <TaskEntries taskId={task.id} />
 
         {/* 서브태스크 */}
         <div className="space-y-1">

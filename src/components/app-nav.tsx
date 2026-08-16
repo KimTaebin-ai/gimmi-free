@@ -9,11 +9,13 @@ import {
   LayoutList,
   MoreHorizontal,
   Salad,
+  Sparkles,
   Sun,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
+  { href: "/", label: "성장", icon: Sparkles },
   { href: "/today", label: "오늘", icon: Sun },
   { href: "/tasks", label: "태스크", icon: CheckSquare },
   { href: "/calendar", label: "캘린더", icon: CalendarDays },
@@ -22,10 +24,13 @@ const items = [
   { href: "/more", label: "더보기", icon: MoreHorizontal },
 ];
 
-// 모바일 하단 탭바에는 5개만: 오늘/캘린더/피트니스/식단/더보기 (태스크는 오늘/더보기에서 진입)
-const mobileItems = items.filter((i) => i.href !== "/tasks");
+// 모바일 하단 탭바는 5개: 성장/오늘/캘린더/피트니스/더보기
+// (태스크·식단은 오늘/더보기에서 진입)
+const MOBILE_HREFS = ["/", "/today", "/calendar", "/fitness", "/more"];
+const mobileItems = MOBILE_HREFS.map((h) => items.find((i) => i.href === h)!);
 
 function isActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
