@@ -33,7 +33,8 @@ src/
     login/                  # 비로그인 진입점
     (app)/                  # 인증 필수 그룹: today, tasks, calendar, fitness, diet, mail, settings
     api/auth/[...nextauth]/ # Auth.js 핸들러
-  auth.ts                   # NextAuth 설정(Prisma adapter, 화이트리스트, 토큰 저장)
+  auth.ts                   # NextAuth 인스턴스(auth.config + Prisma adapter, 토큰 저장)
+  auth.config.ts            # adapter 없는 공유 설정(Google provider, 화이트리스트, JWT 콜백)
   proxy.ts                  # Next 16 프록시(구 middleware): 비로그인 → /login 리다이렉트
                             # JWT 세션 전략이라 프록시에서 DB 접근 없음(쿠키만 검사)
   lib/
