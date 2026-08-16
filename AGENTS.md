@@ -62,6 +62,9 @@ src/
 ## 데이터 모델 (prisma/schema.prisma가 진실. 요약)
 
 - **User / Account / Session** — Auth.js 표준. `Account`에 Google `access_token`/`refresh_token`/`expires_at`/`scope` 저장.
+- **TaskEntry** — 태스크에 붙는 기록(`kind`: note|script|reflection|link).
+  수업·토크·세미나의 스크립트와 느낀 점을 남기는 곳이며, 성장 요약의 핵심 근거다.
+- **GrowthSummary** — 홈 화면 성장 요약 캐시(LLM 결과). 사용자가 명시적으로 요청할 때만 생성.
 - **Project**(리스트), **Tag**, **Task**(priority 0-3, status, startAt/dueAt, `rrule`, parentId 서브태스크,
   `googleEventId`, sortOrder), **TaskTag**
 - **CalendarEvent** — Google 이벤트 캐시(`googleEventId`, `source: google|task`, `lastSyncedAt`)
@@ -77,6 +80,7 @@ src/
 - `AUTH_SECRET` — `npx auth secret`으로 생성
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — Google Cloud OAuth 클라이언트
 - `ALLOWED_EMAILS` — 로그인 허용 이메일(콤마 구분). 화이트리스트 밖 계정은 로그인 거부.
+- `ANTHROPIC_API_KEY` — 홈 화면 성장 요약용. 없으면 앱은 정상 동작하고 그 화면만 안내를 띄운다.
 - `AUTH_URL` — 배포 시 프로덕션 URL(Vercel에선 보통 자동 감지)
 
 ## Google OAuth 주의사항
@@ -114,6 +118,15 @@ src/
     UTC 오프셋이 음수인 지역에서 하루 어긋남). `TaskFilter`의 `DateWindow` 참고.
   - 브라우저 타임존은 `TimeZoneSync`가 `User.timezone`에 반영(서버 계산용). 화면은 브라우저
     타임존을 직접 쓰므로 이동 즉시 반영된다.
+- **홈(`/`)은 성장 대시보드**다. 제품의 관점: 노력 = 시간을 쏟거나 일을 끝낸 게 아니라
+  **이전에 할 수 없던 걸 할 수 있게 되는 것**. 그래서 완료 목록을 나열하지 않고,
+  기록에서 근거를 찾아 "새로 할 수 있게 된 것"만 추린다. 근거가 없으면 비워 두고,
+  반복 업무는 솔직하게 "성장으로 이어지지 않은 일"로 분류한다.
+- LLM 호출은 **사용자가 버튼을 누를 때만** 한다(화면 로딩만으로 과금되지 않도록).
+  결과는 `GrowthSummary`에 캐시. 모델/프롬프트는 `src/lib/growth.ts`.
+- Claude API를 쓸 때는 `claude-api` 스킬을 먼저 읽을 것(모델 ID·파라미터가 자주 바뀐다).
+  현재: `claude-opus-5`, 구조화 출력은 `output_config.format` + `zodOutputFormat`,
+  `temperature`/`budget_tokens`는 400. `stop_reason: "refusal"`을 먼저 확인할 것.
 - 차트: 색은 `globals.css`의 `--chart-*` CSS 변수로만 지정(테마 전환이 자동으로 따라감).
   팔레트는 검증된 카테고리 슬롯 1~3이며 라이트/다크 모두 CVD 검사를 통과한 값이다.
   **이중 축(y축 2개) 금지** — 단위가 다르면 차트를 나눈다(예: 체중·골격근량 kg / 체지방률 %).
