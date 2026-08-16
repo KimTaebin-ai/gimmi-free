@@ -28,6 +28,7 @@ model User {
   calendarSync   CalendarSyncState?
   routines       WorkoutRoutine[]
   workouts       Workout[]
+  exercises      Exercise[]
   bodyMetrics    BodyMetric[]
   foods          Food[]
   meals          Meal[]
@@ -182,6 +183,34 @@ model CalendarSyncState {
 
 // ---------- Fitness ----------
 
+/// 부위별 볼륨 집계를 위해 종목을 분류한다.
+enum MuscleGroup {
+  chest
+  back
+  shoulders
+  legs
+  arms
+  core
+  cardio
+  other
+}
+
+/// 사용자별 종목 사전. Workout/RoutineExercise는 이름(문자열)으로 기록하고
+/// 부위 정보가 필요할 때 이름으로 조인한다(종목을 지워도 기록은 남도록).
+model Exercise {
+  id          String      @id @default(cuid())
+  userId      String
+  name        String
+  muscleGroup MuscleGroup @default(other)
+  isFavorite  Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, muscleGroup])
+}
+
 model WorkoutRoutine {
   id     String  @id @default(cuid())
   userId String
@@ -224,11 +253,15 @@ model WorkoutSet {
   id           String @id @default(cuid())
   workoutId    String
   exerciseName String
+  /// 세션 안에서 종목이 놓인 순서(같은 종목의 세트는 같은 값)
+  exerciseOrder Int   @default(0)
   setNo        Int
   reps         Int
   weightKg     Float
 
   workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+
+  @@index([workoutId, exerciseOrder, setNo])
 }
 
 model BodyMetric {
