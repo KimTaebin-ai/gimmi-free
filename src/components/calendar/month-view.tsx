@@ -20,6 +20,7 @@ import {
   type ItemSpan,
   type TaskColorIndex,
 } from "@/components/calendar/shared";
+import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -193,14 +194,19 @@ function WeekRow({
               title={seg.item.title}
             >
               {showTitle ? (
-                <span className="truncate">
-                  {timed && (
-                    <span className="mr-1 opacity-70">
-                      {format(seg.item.startAt, "H:mm")}
-                    </span>
+                <>
+                  {seg.item.kind === "task" && (
+                    <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
                   )}
-                  {seg.item.title}
-                </span>
+                  <span className="truncate">
+                    {timed && (
+                      <span className="mr-1 opacity-70">
+                        {format(seg.item.startAt, "H:mm")}
+                      </span>
+                    )}
+                    {seg.item.title}
+                  </span>
+                </>
               ) : (
                 <span className="sr-only">{seg.item.title}</span>
               )}

@@ -12,6 +12,7 @@ import {
   layoutSpans,
   weekSegments,
 } from "@/components/calendar/shared";
+import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 const HOUR_HEIGHT = 48; // px
@@ -171,7 +172,12 @@ export function TimeGridView({
                   title={seg.item.title}
                 >
                   {seg.isStart || seg.isEnd ? (
-                    <span className="truncate">{seg.item.title}</span>
+                    <>
+                      {seg.item.kind === "task" && (
+                        <PriorityFlag priority={seg.item.priority} className="mr-0.5 size-2.5" />
+                      )}
+                      <span className="truncate">{seg.item.title}</span>
+                    </>
                   ) : (
                     <span className="sr-only">{seg.item.title}</span>
                   )}
@@ -243,7 +249,12 @@ export function TimeGridView({
                       look.className,
                     )}
                   >
-                    <span className="block truncate font-medium">{p.item.title}</span>
+                    <span className="flex min-w-0 items-center gap-0.5 font-medium">
+                      {p.item.kind === "task" && (
+                        <PriorityFlag priority={p.item.priority} className="size-2.5" />
+                      )}
+                      <span className="truncate">{p.item.title}</span>
+                    </span>
                     {p.height > 28 && (
                       <span className="block truncate opacity-70">
                         {format(p.item.startAt, "H:mm")}–{format(p.item.endAt, "H:mm")}

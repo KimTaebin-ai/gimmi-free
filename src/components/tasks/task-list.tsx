@@ -136,8 +136,9 @@ export function TaskList({
 
     const ordered = [...byLabel.entries()].map(([label, rows]) => ({ label, rows }));
 
-    // 지연됨 → 진행 중 → 날짜순
-    const rank = (l: string) => (l === "지연됨" ? 0 : l === "진행 중" ? 1 : 2);
+    // 지연됨 → 진행 중 → 날짜순 → 날짜 없음(맨 뒤)
+    const rank = (l: string) =>
+      l === "지연됨" ? 0 : l === "진행 중" ? 1 : l === "날짜 없음" ? 3 : 2;
     const dateOf = (rows: Row[]) => Math.min(...rows.map((r) => r.sortAt || Infinity));
     return ordered.sort((a, b) => {
       const r = rank(a.label) - rank(b.label);
@@ -196,13 +197,13 @@ export function TaskList({
     // 그룹마다 독립적인 정렬 컨텍스트 — 같은 날짜/우선순위 안에서 순서를 직접 정할 수 있다
     let colorIndex = 0;
     return (
-      <div className="flex flex-col p-1">
+      <div className="flex flex-col gap-2 p-2">
         {groups.map((g) => {
           const taskIds = g.rows
             .filter((r): r is Extract<Row, { kind: "task" }> => r.kind === "task")
             .map((r) => r.task.id);
           const body = (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-0.5 p-1">
               {g.rows.map((row) => {
                 if (row.kind === "event") {
                   return (
@@ -226,10 +227,11 @@ export function TaskList({
           );
 
           return (
-            <div key={g.label}>
+            // 같은 날짜끼리 한 박스로 묶어 경계를 분명히 한다
+            <div key={g.label} className="overflow-hidden rounded-lg border">
               <p
                 className={cn(
-                  "px-3 pb-1 pt-3 text-xs font-semibold",
+                  "border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold",
                   g.label === "지연됨" ? "text-red-500" : "text-muted-foreground",
                 )}
               >

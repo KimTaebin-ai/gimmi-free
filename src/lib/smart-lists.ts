@@ -14,12 +14,13 @@ export type ListSelection =
   | { type: "project"; id: string }
   | { type: "tag"; id: string };
 
+// '전체'가 기본 진입 화면이라 맨 위에 둔다(전체 조망 → 좁혀 보기 순서)
 export const SMART_LISTS: { key: SmartListKey; label: string }[] = [
+  { key: "all", label: "전체" },
   { key: "today", label: "오늘" },
   { key: "tomorrow", label: "내일" },
   { key: "next7", label: "다음 7일" },
   { key: "unscheduled", label: "예정 없음" },
-  { key: "all", label: "전체" },
   { key: "done", label: "완료됨" },
 ];
 

@@ -45,6 +45,9 @@ export function TasksView() {
 
   // 날짜 기반 리스트는 날짜 그룹으로 묶어 보여준다
   const dateBased = eventRange !== null;
+  // '전체'도 같은 날짜끼리 박스로 묶어 조망하기 쉽게 한다
+  const groupByDate =
+    dateBased || (selection.type === "smart" && selection.key === "all");
   // 완료 목록만 빼고 어디서든 순서를 직접 정할 수 있다.
   // 날짜 리스트에서는 같은 그룹 안에서만 이동한다(날짜 변경은 상세에서).
   const reorderable = !(selection.type === "smart" && selection.key === "done");
@@ -129,7 +132,7 @@ export function TasksView() {
             isLoading={isLoading}
             selectedId={selectedTaskId}
             onSelect={setSelectedTaskId}
-            groupByDate={dateBased}
+            groupByDate={groupByDate}
             events={dateBased ? events : undefined}
             onSelectEvent={setSelectedEvent}
             onReorder={reorderable ? (ids) => reorder.mutate(ids) : undefined}

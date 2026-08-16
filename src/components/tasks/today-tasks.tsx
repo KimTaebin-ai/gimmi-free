@@ -28,7 +28,7 @@ export function TodayTasks() {
   return (
     <div>
       <QuickAdd />
-      <div className="mt-2 rounded-lg border">
+      <div className="mt-2">
         <TaskList
           tasks={tasks}
           isLoading={isLoading}

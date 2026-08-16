@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { describeRrule, formatSchedule, isOverdue } from "@/lib/format-date";
-import { PRIORITY_STYLES, taskColorVar } from "@/lib/task-colors";
+import { taskColorVar } from "@/lib/task-colors";
+import { PriorityFlag } from "@/components/priority-flag";
 import type { TaskWithRelations } from "@/lib/task-types";
 
 export function TaskItem({
@@ -33,8 +34,6 @@ export function TaskItem({
 }) {
   const done = task.status === "done";
   const subDone = task.subtasks.filter((s) => s.status === "done").length;
-  const priority = PRIORITY_STYLES[task.priority] ?? PRIORITY_STYLES[0];
-  const PriorityIcon = priority.icon;
   const color = taskColorVar(index);
 
   return (
@@ -64,12 +63,7 @@ export function TaskItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          {PriorityIcon && (
-            <PriorityIcon
-              className={cn("size-3 shrink-0", priority.className)}
-              aria-label={`우선순위 ${priority.label}`}
-            />
-          )}
+          <PriorityFlag priority={task.priority} className="size-3" />
           <span
             className={cn(
               "truncate text-sm",

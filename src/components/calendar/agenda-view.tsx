@@ -9,6 +9,7 @@ import {
   groupItemsByDay,
   itemDotStyle,
 } from "@/components/calendar/shared";
+import { PriorityFlag } from "@/components/priority-flag";
 import type { CalendarItem } from "@/lib/calendar-types";
 
 export function AgendaView({
@@ -65,13 +66,16 @@ export function AgendaView({
                   <div className="min-w-0 flex-1">
                     <div
                       className={cn(
-                        "truncate text-sm",
+                        "flex min-w-0 items-center gap-1 text-sm",
                         item.kind === "task" &&
                           item.status === "done" &&
                           "text-muted-foreground line-through",
                       )}
                     >
-                      {item.title}
+                      {item.kind === "task" && (
+                        <PriorityFlag priority={item.priority} className="size-3" />
+                      )}
+                      <span className="truncate">{item.title}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
