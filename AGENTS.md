@@ -39,8 +39,13 @@ src/
                             # JWT 세션 전략이라 프록시에서 DB 접근 없음(쿠키만 검사)
   lib/
     prisma.ts               # PrismaClient 싱글턴
+    actions/                # "use server" 서버 액션 (tasks, projects, tags …)
+    quick-add.ts            # 퀵애드 자연어 파서(한국어 날짜/시간, #태그, !우선순위, 반복)
+    smart-lists.ts          # 스마트 리스트 → TaskFilter 변환(날짜는 클라 타임존 기준)
     google/                 # calendar.ts, gmail.ts — 토큰 refresh 로직 포함 (Phase 2/5)
+  hooks/                    # use-tasks(TanStack Query 훅, 낙관적 업데이트), use-media-query
   components/
+    tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
 ```
 
 ## 데이터 모델 (prisma/schema.prisma가 진실. 요약)
