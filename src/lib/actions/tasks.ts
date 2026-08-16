@@ -1,8 +1,10 @@
 "use server";
 
 import { RRule } from "rrule";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/actions/auth-helpers";
+import { pushTaskToGoogle, removeTaskFromGoogle } from "@/lib/google/task-push";
 import {
   taskInclude,
   type CreateTaskInput,
@@ -109,7 +111,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithRelati
     select: { sortOrder: true },
   });
 
-  return prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       userId,
       title,
@@ -126,6 +128,10 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithRelati
     },
     include: taskInclude,
   });
+
+  // Google 반영은 응답을 막지 않도록 after()로 미룬다
+  after(() => pushTaskToGoogle(userId, task.id));
+  return task;
 }
 
 export async function updateTask(
@@ -135,7 +141,7 @@ export async function updateTask(
   const userId = await requireUserId();
   const { tagNames, ...fields } = input;
 
-  return prisma.task.update({
+  const task = await prisma.task.update({
     // userId 조건으로 소유권 검증 (다른 유저의 태스크면 P2025)
     where: { id, userId },
     data: {
@@ -146,6 +152,9 @@ export async function updateTask(
     },
     include: taskInclude,
   });
+
+  after(() => pushTaskToGoogle(userId, task.id));
+  return task;
 }
 
 /**
@@ -198,10 +207,31 @@ export async function toggleTaskDone(
     }
   }
 
+  // 완료되면 캘린더에서 내리고, 되돌리면 다시 올린다. 새 인스턴스도 반영.
+  after(async () => {
+    await pushTaskToGoogle(userId, task.id);
+    if (nextInstance) await pushTaskToGoogle(userId, nextInstance.id);
+  });
+
   return { task, nextInstance };
 }
 
 export async function deleteTask(id: string): Promise<void> {
   const userId = await requireUserId();
+  // 삭제 전에 googleEventId를 읽어둬야 캘린더 이벤트도 정리할 수 있다
+  const existing = await prisma.task.findUnique({
+    where: { id, userId },
+    select: { googleEventId: true, subtasks: { select: { googleEventId: true } } },
+  });
   await prisma.task.delete({ where: { id, userId } });
+
+  const eventIds = [
+    existing?.googleEventId,
+    ...(existing?.subtasks ?? []).map((s) => s.googleEventId),
+  ].filter((v): v is string => !!v);
+  if (eventIds.length > 0) {
+    after(async () => {
+      for (const eventId of eventIds) await removeTaskFromGoogle(userId, eventId);
+    });
+  }
 }
