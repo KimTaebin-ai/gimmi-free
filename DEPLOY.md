@@ -1,6 +1,9 @@
 # 배포 (Vercel)
 
+**운영 URL: <https://gimmi-free-k2g2.vercel.app>** (리전 icn1 / 서울)
+
 GitHub `main`에 push하면 Vercel이 자동 배포한다. 최초 1회만 아래 설정이 필요하다.
+아래 1~3번은 이미 완료된 상태이며, 도메인을 바꾸거나 프로젝트를 다시 만들 때 참고한다.
 
 ## 1. Vercel에 프로젝트 만들기
 
