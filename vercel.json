@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/calendar-sync",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 18 * * *"
     },
     {
       "path": "/api/cron/blog-sync",
-      "schedule": "0 * * * *"
+      "schedule": "30 18 * * *"
     }
   ]
 }
