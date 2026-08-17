@@ -55,7 +55,7 @@ export function GrowthView({ userName }: { userName: string }) {
         <p className="mt-1 text-sm text-muted-foreground">
           노력은 시간을 쏟거나 일을 끝낸 것이 아니라,{" "}
           <b className="text-foreground">이전에 할 수 없던 걸 할 수 있게 되는 것</b>입니다.
-          기록을 바탕으로 그 변화만 추려서 보여줍니다.
+          태스크·일정·블로그 글과 거기 남긴 기록에서 근거를 찾아 그 변화만 추려서 보여줍니다.
         </p>
       </header>
 
@@ -125,8 +125,8 @@ export function GrowthView({ userName }: { userName: string }) {
             </h2>
             {summary.content.gained.length === 0 ? (
               <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                이 기간에는 새로 할 수 있게 된 것을 근거 있게 찾지 못했어요. 수업이나 세미나
-                기록에 &quot;느낀 점&quot;을 남기면 더 정확해집니다.
+                이 기간에는 새로 할 수 있게 된 것을 근거 있게 찾지 못했어요. 태스크·일정에
+                &quot;느낀 점&quot;을 남기거나 블로그 글을 불러오면 더 정확해집니다.
               </p>
             ) : (
               <ul className="space-y-2">

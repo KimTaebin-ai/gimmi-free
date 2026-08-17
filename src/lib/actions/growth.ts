@@ -62,7 +62,7 @@ export async function loadGrowthSummary(): Promise<GrowthResponse> {
       error: {
         reason: "no_data",
         message:
-          "아직 요약할 기록이 없어요. 태스크를 완료하거나, 태스크에 메모·스크립트·느낀 점을 남겨 보세요.",
+          "아직 요약할 기록이 없어요. 태스크를 완료하거나, 태스크·일정에 메모·스크립트·느낀 점을 남기거나, 블로그 글을 불러와 보세요.",
       },
     };
   }
@@ -95,7 +95,7 @@ export async function refreshGrowthSummary(): Promise<GrowthResponse> {
       ok: false,
       error: {
         reason: "no_data",
-        message: "요약할 기록이 없어요. 태스크를 완료하거나 기록을 남겨 보세요.",
+        message: "요약할 기록이 없어요. 태스크를 완료하거나, 기록을 남기거나, 블로그 글을 불러와 보세요.",
       },
     };
   }

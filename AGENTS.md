@@ -46,6 +46,7 @@ src/
     calendar-utils.ts       # [startAt, endAt) 반열린 구간 + 종일=UTC 자정 규칙
     date-only.ts            # @db.Date 컬럼용. 날짜만 있는 값은 "yyyy-MM-dd"로 주고받고 UTC 자정 저장
     fitness-stats.ts        # 1RM(Epley)·볼륨·부위별 집계·이동평균 (순수 함수, 테스트 대상)
+    growth-evidence.ts      # 성장 근거의 형태·세기 판정(순수 함수). growth.ts가 이걸 쓴다
     settings.ts             # User.settings(JSON) 읽기/쓰기
     google/
       tokens.ts             # access token 획득 + refresh(만료 시 Account 갱신)
@@ -130,7 +131,10 @@ src/
   **이전에 할 수 없던 걸 할 수 있게 되는 것**. 그래서 완료 목록을 나열하지 않고,
   기록에서 근거를 찾아 "새로 할 수 있게 된 것"만 추린다. 근거가 없으면 비워 두고,
   반복 업무는 솔직하게 "성장으로 이어지지 않은 일"로 분류한다.
-  근거는 태스크 + Google 일정 + 각각에 붙은 기록 전부다(수업·세미나는 대개 일정으로 들어온다).
+  근거는 **태스크 + Google 일정 + 블로그 글 + 각각에 붙은 기록** 전부다.
+  (수업·세미나는 대개 일정으로 들어오고, 블로그 글은 "그 주제를 설명할 수 있게 됐다"는 신호다.)
+  근거의 세기는 `growth-evidence.ts`의 `evidenceStrength`로 매겨 강한 것부터 프롬프트에 넣고,
+  제목만 있는 항목은 "근거가 약함"으로 표시해 모델이 단정하지 않게 한다.
 - LLM 호출은 **사용자가 버튼을 누를 때만** 한다(화면 로딩만으로 과금되지 않도록).
   결과는 `GrowthSummary`에 캐시. 모델/프롬프트는 `src/lib/growth.ts`.
 - Claude API를 쓸 때는 `claude-api` 스킬을 먼저 읽을 것(모델 ID·파라미터가 자주 바뀐다).

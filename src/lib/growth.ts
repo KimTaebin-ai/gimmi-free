@@ -3,6 +3,13 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { GrowthSummarySchema, type GrowthSummaryContent } from "@/lib/growth-types";
+import {
+  isWeakEvidence,
+  ORIGIN_LABEL,
+  sortByEvidence,
+  type EntryForPrompt,
+  type SourceForPrompt,
+} from "@/lib/growth-evidence";
 
 /** 요약이 다루는 기간 */
 const LOOKBACK_DAYS = 90;
@@ -24,38 +31,26 @@ const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리�
 - 반복 업무나 유지 활동은 솔직하게 notGrowth에 넣으세요. 억지로 성장으로 포장하지 마세요.
 - 사용자가 남긴 메모·스크립트·느낀 점이 가장 중요한 근거입니다.
   제목만 있고 기록이 없는 항목("남긴 기록 없음"으로 표시됨)은 근거가 약하니 단정하지 마세요.
-- 자료에는 [태스크]와 [일정](Google 캘린더에서 온 수업·세미나·미팅)이 섞여 있습니다.
-  둘을 동등한 근거로 취급하세요 — 수업이나 세미나에서 배운 것도 성장입니다.
+- 자료에는 세 종류가 섞여 있습니다. 모두 동등한 근거로 취급하세요.
+  - [태스크]: 직접 만든 할 일과 거기 남긴 기록
+  - [일정]: Google 캘린더에서 온 수업·세미나·미팅
+  - [블로그 글]: 실제로 발행한 글. **글로 정리해 남에게 설명할 수 있게 되었다는 신호**라
+    근거로서 무게가 큽니다. 다만 여기 실린 건 요약뿐이니 글 전체를 봤다고 단정하지 마세요.
 - 한국어로, 담백하게 씁니다. 칭찬이나 격려보다 정확한 관찰이 필요합니다.
 - 기록이 빈약하면 gained를 비우고 그 사실을 headline에 적으세요.`;
-
-interface EntryForPrompt {
-  kind: string;
-  title: string | null;
-  content: string;
-}
-
-/** 태스크와 Google 일정을 같은 형태로 다룬다 — 둘 다 성장의 근거가 된다 */
-interface SourceForPrompt {
-  origin: "task" | "event";
-  title: string;
-  at: Date | null;
-  project: string | null;
-  tags: string[];
-  note: string | null;
-  entries: EntryForPrompt[];
-}
 
 function renderSources(sources: SourceForPrompt[]): string {
   return sources
     .map((t, i) => {
-      const label = t.origin === "event" ? "[일정]" : "[태스크]";
-      const parts = [`## ${i + 1}. ${label} ${t.title}`];
+      const parts = [`## ${i + 1}. ${ORIGIN_LABEL[t.origin]} ${t.title}`];
       if (t.at) parts.push(`날짜: ${t.at.toISOString().slice(0, 10)}`);
-      if (t.entries.length === 0) parts.push("(남긴 기록 없음 — 근거가 약함)");
-      if (t.project) parts.push(`리스트: ${t.project}`);
+      if (isWeakEvidence(t)) parts.push("(남긴 내용 없음 — 근거가 약함)");
+      if (t.project) parts.push(`${t.origin === "blog" ? "카테고리" : "리스트"}: ${t.project}`);
       if (t.tags.length) parts.push(`태그: ${t.tags.join(", ")}`);
-      if (t.note) parts.push(`메모: ${t.note.slice(0, MAX_ENTRY_CHARS)}`);
+      if (t.note)
+        parts.push(
+          `${t.origin === "blog" ? "글 요약" : "메모"}: ${t.note.slice(0, MAX_ENTRY_CHARS)}`,
+        );
       for (const e of t.entries) {
         const label =
           { note: "메모", script: "스크립트/강의 내용", reflection: "느낀 점", link: "참고 자료" }[
@@ -82,7 +77,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
   const periodStart = new Date(periodEnd);
   periodStart.setDate(periodStart.getDate() - LOOKBACK_DAYS);
 
-  const [taskRows, eventRows] = await Promise.all([
+  const [taskRows, eventRows, blogRows] = await Promise.all([
     prisma.task.findMany({
       where: {
         userId,
@@ -113,6 +108,19 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
         title: true,
         description: true,
         startAt: true,
+      },
+    }),
+    // 블로그 글도 근거다 — 글로 정리했다는 건 그 주제를 설명할 수 있게 됐다는 뜻
+    prisma.blogPost.findMany({
+      where: { userId, publishedAt: { gte: periodStart, lte: periodEnd } },
+      orderBy: { publishedAt: "desc" },
+      take: MAX_TASKS,
+      select: {
+        title: true,
+        summary: true,
+        category: true,
+        tags: true,
+        publishedAt: true,
       },
     }),
   ]);
@@ -154,10 +162,22 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     entries: byEvent.get(e.googleEventId) ?? [],
   }));
 
-  // 기록이 있는 것을 먼저 — 프롬프트 앞쪽에 근거가 강한 항목이 오도록
-  const sources = [...taskSources, ...eventSources]
-    .sort((a, b) => b.entries.length - a.entries.length)
-    .slice(0, MAX_TASKS);
+  const blogSources: SourceForPrompt[] = blogRows.map((b) => ({
+    origin: "blog",
+    title: b.title,
+    at: b.publishedAt,
+    project: b.category,
+    tags: b.tags,
+    note: b.summary,
+    entries: [],
+  }));
+
+  // 근거가 강한 것부터 — 프롬프트 앞쪽에 오도록
+  const sources = sortByEvidence([
+    ...taskSources,
+    ...eventSources,
+    ...blogSources,
+  ]).slice(0, MAX_TASKS);
 
   return { periodStart, periodEnd, sources };
 }
@@ -184,7 +204,7 @@ export async function generateGrowthSummary(
     messages: [
       {
         role: "user",
-        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}`,
+        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 발행한 블로그 글, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}`,
       },
     ],
   });
