@@ -78,7 +78,9 @@ function filterToWhere(userId: string, filter: TaskFilter): Prisma.TaskWhereInpu
     case "project":
       return { ...base, status: "todo", projectId: filter.projectId };
     case "tag":
-      return { ...base, status: "todo", tags: { some: { tagId: filter.tagId } } };
+      // 태그는 "이 주제로 뭘 했나"를 보는 축이라 완료된 것까지 함께 준다.
+      // 남은 것/완료된 것 구분은 화면에서 그룹으로 나눈다(TaskList의 groupByStatus).
+      return { ...base, tags: { some: { tagId: filter.tagId } } };
   }
 }
 

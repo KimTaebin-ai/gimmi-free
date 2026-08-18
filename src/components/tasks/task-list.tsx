@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { endOfDay, format, isSameDay, isToday, isTomorrow, startOfDay } from "date-fns";
 import { ko } from "date-fns/locale";
+import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TaskItem } from "@/components/tasks/task-item";
 import { EventRow } from "@/components/tasks/event-row";
@@ -42,6 +43,8 @@ interface TaskListProps {
   onReorder?: (orderedIds: string[]) => void;
   /** 날짜 기반 리스트에서 지연됨/오늘/내일/날짜별 그룹 헤더 표시 */
   groupByDate?: boolean;
+  /** 남은 태스크 / 완료됨 두 그룹으로 묶어 한 화면에 보여준다 (태그별 보기) */
+  groupByStatus?: boolean;
   /** 함께 표시할 Google 일정 (날짜 기반 리스트에서만) */
   events?: CalendarEventLite[];
   onSelectEvent?: (event: CalendarEventLite) => void;
@@ -62,6 +65,10 @@ function SortableRow({ id, children }: { id: string; children: React.ReactNode }
     </div>
   );
 }
+
+/** 완료 그룹은 정렬(드래그)을 막고 헤더도 다르게 그린다 */
+const DONE_LABEL = "완료됨";
+const TODO_LABEL = "남은 태스크";
 
 function labelForDate(date: Date): string {
   if (isToday(date)) return "오늘";
@@ -90,6 +97,7 @@ export function TaskList({
   emptyMessage = "태스크가 없어요",
   onReorder,
   groupByDate = false,
+  groupByStatus = false,
   events,
   onSelectEvent,
 }: TaskListProps) {
@@ -101,7 +109,35 @@ export function TaskList({
   );
 
   const groups = useMemo(() => {
-    if (!groupByDate || !tasks) return null;
+    if (!tasks) return null;
+
+    // 상태 그룹: 남은 것 위, 완료된 것 아래(최근 완료 순).
+    // 태그처럼 "이 주제로 뭘 했고 뭐가 남았나"를 한 화면에서 보는 리스트용.
+    if (groupByStatus) {
+      const todo: Row[] = [];
+      const done: Row[] = [];
+      for (const task of tasks) {
+        const anchor = task.startAt ?? task.dueAt;
+        const row: Row = {
+          kind: "task",
+          key: `task-${task.id}`,
+          task,
+          sortAt: anchor ? forDisplay(anchor, task.allDay).getTime() : 0,
+        };
+        (task.status === "done" ? done : todo).push(row);
+      }
+      done.sort(
+        (a, b) =>
+          (b.kind === "task" ? (b.task.completedAt?.getTime() ?? 0) : 0) -
+          (a.kind === "task" ? (a.task.completedAt?.getTime() ?? 0) : 0),
+      );
+      return [
+        ...(todo.length > 0 ? [{ label: TODO_LABEL, rows: todo }] : []),
+        ...(done.length > 0 ? [{ label: DONE_LABEL, rows: done }] : []),
+      ];
+    }
+
+    if (!groupByDate) return null;
     const today = startOfDay(new Date());
     const byLabel = new Map<string, Row[]>();
 
@@ -144,7 +180,7 @@ export function TaskList({
       const r = rank(a.label) - rank(b.label);
       return r !== 0 ? r : dateOf(a.rows) - dateOf(b.rows);
     });
-  }, [groupByDate, tasks, events]);
+  }, [groupByDate, groupByStatus, tasks, events]);
 
   if (isLoading) {
     return (
@@ -199,9 +235,12 @@ export function TaskList({
     return (
       <div className="flex flex-col gap-2 p-2">
         {groups.map((g) => {
+          const isDone = g.label === DONE_LABEL;
           const taskIds = g.rows
             .filter((r): r is Extract<Row, { kind: "task" }> => r.kind === "task")
             .map((r) => r.task.id);
+          // 완료된 것끼리 순서를 바꿔봐야 의미가 없다
+          const sortable = !!onReorder && !isDone && taskIds.length > 1;
           const body = (
             <div className="flex flex-col gap-0.5 p-1">
               {g.rows.map((row) => {
@@ -215,7 +254,7 @@ export function TaskList({
                   );
                 }
                 const node = renderTask(row.task, colorIndex++);
-                return onReorder && taskIds.length > 1 ? (
+                return sortable ? (
                   <SortableRow key={row.key} id={row.task.id}>
                     {node}
                   </SortableRow>
@@ -228,19 +267,23 @@ export function TaskList({
 
           return (
             // 같은 날짜끼리 한 박스로 묶어 경계를 분명히 한다
-            <div key={g.label} className="overflow-hidden rounded-lg border">
+            <div
+              key={g.label}
+              className={cn("overflow-hidden rounded-lg border", isDone && "bg-muted/20")}
+            >
               <p
                 className={cn(
-                  "border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold",
+                  "flex items-center gap-1.5 border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold",
                   g.label === "지연됨" ? "text-red-500" : "text-muted-foreground",
                 )}
               >
+                {isDone && <CheckCircle2 className="size-3.5" />}
                 {g.label}
-                <span className="ml-1.5 font-normal text-muted-foreground/60">
+                <span className="font-normal text-muted-foreground/60">
                   {g.rows.length}
                 </span>
               </p>
-              {onReorder && taskIds.length > 1 ? (
+              {sortable ? (
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
