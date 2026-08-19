@@ -43,23 +43,30 @@ function titleKey(title: string): string {
  * 이 필드가 생기기 전에 만든 요약도 타임라인에 나와야 하기 때문이다.
  */
 export function buildMonthlyTimeline(summaries: SummaryForTimeline[]): MonthlyCapabilities[] {
-  // 나중에 만든 요약이 이기도록 오래된 것부터 넣는다(뒤에 넣는 쪽이 덮어쓴다)
+  // 오래된 것부터 넣어 나중 요약이 앞의 것을 통째로 덮어쓰게 한다
   const ordered = [...summaries].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const byMonth = new Map<string, Map<string, GainedCapability>>();
+  const byMonth = new Map<string, { at: number; items: Map<string, GainedCapability> }>();
 
   for (const summary of ordered) {
     const fallback = monthKey(summary.periodEnd);
+    const at = summary.createdAt.getTime();
 
     for (const capability of summary.content?.gained ?? []) {
       const month = MONTH_PATTERN.test(capability.month ?? "") ? capability.month : fallback;
-      const slot = byMonth.get(month) ?? new Map<string, GainedCapability>();
-      slot.set(titleKey(capability.title), { ...capability, month });
-      byMonth.set(month, slot);
+
+      const slot = byMonth.get(month);
+      // 다른(더 이른) 요약이 채워 둔 달이면 통째로 비우고 이 요약 것으로 바꾼다
+      if (!slot || slot.at < at) {
+        byMonth.set(month, { at, items: new Map([[titleKey(capability.title), { ...capability, month }]]) });
+        continue;
+      }
+      // 같은 요약 안에서 모델이 같은 말을 되풀이한 경우만 합친다
+      slot.items.set(titleKey(capability.title), { ...capability, month });
     }
   }
 
   return [...byMonth.entries()]
-    .map(([month, capabilities]) => ({ month, capabilities: [...capabilities.values()] }))
+    .map(([month, slot]) => ({ month, capabilities: [...slot.items.values()] }))
     .sort((a, b) => b.month.localeCompare(a.month));
 }
 

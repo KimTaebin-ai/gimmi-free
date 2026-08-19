@@ -1,9 +1,11 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/actions/auth-helpers";
-import { hasClaudeKey, CLAUDE_MODEL } from "@/lib/claude";
-import { collectGrowthInput, generateGrowthSummary } from "@/lib/growth";
+import { hasClaudeKey } from "@/lib/claude";
+import { collectGrowthInput } from "@/lib/growth";
+import { runGrowthJob, sweepStaleJobs } from "@/lib/growth-job";
 import type {
   GrowthSummaryContent,
   GrowthSummaryResult,
@@ -78,8 +80,61 @@ export async function loadGrowthSummary(): Promise<GrowthResponse> {
   };
 }
 
-/** 사용자가 명시적으로 요청했을 때만 LLM을 호출한다 */
-export async function refreshGrowthSummary(): Promise<GrowthResponse> {
+// ---------- 백그라운드 정리 ----------
+
+export type GrowthJobState =
+  | { status: "idle" }
+  | { status: "running"; startedAt: string }
+  | { status: "failed"; message: string; finishedAt: string }
+  | { status: "done"; finishedAt: string };
+
+function toJobState(job: {
+  status: string;
+  error: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+} | null): GrowthJobState {
+  if (!job) return { status: "idle" };
+  if (job.status === "running") return { status: "running", startedAt: job.startedAt.toISOString() };
+  if (job.status === "failed") {
+    return {
+      status: "failed",
+      message: job.error ?? "정리에 실패했어요.",
+      finishedAt: (job.finishedAt ?? job.startedAt).toISOString(),
+    };
+  }
+  return { status: "done", finishedAt: (job.finishedAt ?? job.startedAt).toISOString() };
+}
+
+/**
+ * 지금 정리가 돌고 있는지 — 화면이 주기적으로 물어본다.
+ *
+ * 진행 상태를 DB에서 읽기 때문에 새로고침하거나 다른 페이지를 갔다 와도
+ * "정리하는 중"이 그대로 이어진다.
+ */
+export async function getGrowthJobState(): Promise<GrowthJobState> {
+  const userId = await requireUserId();
+  await sweepStaleJobs(userId);
+
+  const job = await prisma.growthJob.findFirst({
+    where: { userId },
+    orderBy: { startedAt: "desc" },
+    select: { status: true, error: true, startedAt: true, finishedAt: true },
+  });
+  return toJobState(job);
+}
+
+export type StartGrowthResponse =
+  | { ok: true; state: GrowthJobState }
+  | { ok: false; error: GrowthUnavailable };
+
+/**
+ * 정리를 시작만 하고 곧바로 응답한다.
+ *
+ * 실제 생성은 `after()`가 응답 뒤에 이어서 돌린다 — 사용자가 화면을 옮기거나 새로고침해도
+ * 계속된다. 이미 돌고 있으면 새로 만들지 않는다(두 번 눌러도, 탭이 두 개여도 한 번만 과금).
+ */
+export async function startGrowthSummary(): Promise<StartGrowthResponse> {
   const userId = await requireUserId();
 
   if (!hasClaudeKey()) {
@@ -92,61 +147,36 @@ export async function refreshGrowthSummary(): Promise<GrowthResponse> {
     };
   }
 
+  await sweepStaleJobs(userId);
+  const running = await prisma.growthJob.findFirst({
+    where: { userId, status: "running" },
+    orderBy: { startedAt: "desc" },
+    select: { status: true, error: true, startedAt: true, finishedAt: true },
+  });
+  if (running) return { ok: true, state: toJobState(running) };
+
+  // 근거가 없으면 작업을 만들지 않는다 — 실패할 걸 알면서 API를 부를 이유가 없다
   const input = await collectGrowthInput(userId);
   if (input.sources.length === 0) {
     return {
       ok: false,
       error: {
         reason: "no_data",
-        message: "요약할 기록이 없어요. 태스크를 완료하거나, 기록을 남기거나, 블로그 글을 불러와 보세요.",
+        message:
+          "요약할 기록이 없어요. 태스크를 완료하거나, 기록을 남기거나, 블로그 글을 불러와 보세요.",
       },
     };
   }
 
-  try {
-    const content = await generateGrowthSummary(input);
-    if (!content) {
-      return {
-        ok: false,
-        error: { reason: "error", message: "요약을 만들지 못했어요. 잠시 후 다시 시도해 주세요." },
-      };
-    }
-    const saved = await prisma.growthSummary.create({
-      data: {
-        userId,
-        periodStart: input.periodStart,
-        periodEnd: input.periodEnd,
-        content,
-        sourceCount: input.sources.length,
-        model: CLAUDE_MODEL,
-      },
-    });
-    return { ok: true, data: toResult(saved, false) };
-  } catch (err) {
-    console.error("[growth] 요약 생성 실패:", err);
-    return { ok: false, error: { reason: "error", message: explainApiError(err) } };
-  }
+  const job = await prisma.growthJob.create({
+    data: { userId },
+    select: { id: true, status: true, error: true, startedAt: true, finishedAt: true },
+  });
+
+  after(() => runGrowthJob(job.id, userId));
+
+  return { ok: true, state: toJobState(job) };
 }
-
-/** Anthropic API 오류를 사용자가 무엇을 해야 할지 알 수 있는 문장으로 */
-function explainApiError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-
-  if (/credit balance is too low/i.test(raw)) {
-    return "Anthropic 계정에 크레딧이 없습니다. console.anthropic.com 의 Plans & Billing에서 크레딧을 충전한 뒤 다시 시도해 주세요.";
-  }
-  if (/authentication|invalid x-api-key/i.test(raw)) {
-    return "ANTHROPIC_API_KEY가 올바르지 않습니다. 키를 다시 확인해 주세요.";
-  }
-  if (/rate limit/i.test(raw)) {
-    return "요청이 잠시 몰렸습니다. 조금 뒤에 다시 시도해 주세요.";
-  }
-  if (/overloaded/i.test(raw)) {
-    return "Anthropic 서비스가 혼잡합니다. 잠시 후 다시 시도해 주세요.";
-  }
-  return raw.slice(0, 300);
-}
-
 
 
 // ---------- 월별 타임라인 ----------

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
@@ -17,10 +17,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
+  getGrowthJobState,
   getGrowthSummary,
   listGrowthEvidence,
   loadGrowthSummary,
-  refreshGrowthSummary,
+  startGrowthSummary,
 } from "@/lib/actions/growth";
 import { CapabilityTimeline } from "@/components/growth/capability-timeline";
 import { LevelBadge } from "@/components/growth/level-badge";
@@ -45,22 +46,46 @@ export function GrowthView({ userName }: { userName: string }) {
     enabled: pickedId !== null,
   });
 
-  const refresh = useMutation({
-    mutationFn: () => refreshGrowthSummary(),
-    onSuccess: (next) => {
+  /**
+   * 정리 진행 상태는 서버(DB)에 있다. 그래서 새로고침하거나 다른 페이지를 갔다 와도
+   * "정리하는 중"이 이어지고, 끝나면 이 화면이 알아서 결과를 집어 온다.
+   * 도는 동안만 짧게 폴링한다.
+   */
+  const { data: job } = useQuery({
+    queryKey: ["growth-job"],
+    queryFn: () => getGrowthJobState(),
+    refetchInterval: (q) => (q.state.data?.status === "running" ? 3000 : false),
+    refetchOnWindowFocus: true,
+  });
+  const pending = job?.status === "running";
+
+  const start = useMutation({
+    mutationFn: () => startGrowthSummary(),
+    onSuccess: (r) => {
       setPickedId(null);
-      qc.setQueryData(["growth"], next);
-      // 새 요약이 목록·타임라인에도 반영돼야 한다
-      qc.invalidateQueries({ queryKey: ["growth-history"] });
-      qc.invalidateQueries({ queryKey: ["growth-timeline"] });
+      setStartError(r.ok ? null : r.error.message);
+      qc.invalidateQueries({ queryKey: ["growth-job"] });
     },
   });
+  const [startError, setStartError] = useState<string | null>(null);
+
+  // 정리가 끝난 순간에만 결과를 다시 불러온다(폴링이 계속 무효화하지 않도록)
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (pending) wasRunning.current = true;
+    else if (wasRunning.current) {
+      wasRunning.current = false;
+      qc.invalidateQueries({ queryKey: ["growth"] });
+      qc.invalidateQueries({ queryKey: ["growth-history"] });
+      qc.invalidateQueries({ queryKey: ["growth-timeline"] });
+      qc.invalidateQueries({ queryKey: ["growth-evidence"] });
+    }
+  }, [pending, qc]);
 
   const latest = result?.ok ? result.data : null;
   const summary = pickedId !== null ? (picked ?? null) : latest;
   const sourceCount = evidence?.rows.length;
   const error = result && !result.ok ? result.error : null;
-  const pending = refresh.isPending;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4">
@@ -107,13 +132,31 @@ export function GrowthView({ userName }: { userName: string }) {
         <Button
           size="sm"
           variant={summary ? "outline" : "default"}
-          disabled={pending || (sourceCount ?? 0) === 0}
-          onClick={() => refresh.mutate()}
+          disabled={pending || start.isPending || (sourceCount ?? 0) === 0}
+          onClick={() => start.mutate()}
         >
           <RefreshCw className={cn("size-3.5", pending && "animate-spin")} />
           {pending ? "정리하는 중…" : summary ? "다시 정리" : "요약 만들기"}
         </Button>
       </div>
+
+      {/* 백그라운드 정리가 실패했으면 이유를 보여 준다 — 조용히 사라지면 안 된다 */}
+      {(startError || job?.status === "failed") && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <span>{startError ?? (job?.status === "failed" ? job.message : "")}</span>
+        </div>
+      )}
+
+      {pending && (
+        <div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          <RefreshCw className="size-4 shrink-0 animate-spin" />
+          <span>
+            정리하는 중입니다. 이 화면을 떠나거나 새로고침해도 계속 진행되고, 끝나면 여기에
+            나타납니다.
+          </span>
+        </div>
+      )}
 
       {pickedId !== null && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">

@@ -36,6 +36,7 @@ model User {
   entries         TaskEntry[]
   blogPosts       BlogPost[]
   docChunks       DocChunk[]
+  growthJobs      GrowthJob[]
 }
 
 model Account {
@@ -188,6 +189,34 @@ model GrowthSummary {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+/// 성장 요약 생성 작업.
+///
+/// 요약은 임베딩 + Claude 호출이라 수십 초가 걸린다. 그동안 사용자가 화면을 떠나거나
+/// 새로고침해도 작업은 계속돼야 하고, 돌아왔을 때 진행 중인지 알 수 있어야 한다.
+/// 그래서 진행 상태를 클라이언트가 아니라 DB에 둔다 — 탭을 닫아도 남는 곳은 여기뿐이다.
+model GrowthJob {
+  id     String          @id @default(cuid())
+  userId String
+  status GrowthJobStatus @default(running)
+  /// 실패했을 때 사용자에게 보여 줄 문장
+  error  String?
+  /// 성공했을 때 만들어진 요약
+  summaryId String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+}
+
+enum GrowthJobStatus {
+  running
+  done
+  failed
 }
 
 model TaskTag {

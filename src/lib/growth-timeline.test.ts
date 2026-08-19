@@ -58,6 +58,40 @@ describe("buildMonthlyTimeline", () => {
     expect(countCapabilities(timeline)).toBe(1);
   });
 
+  it("말만 바꿔 쓴 같은 능력이 겹쳐 쌓이지 않는다", () => {
+    // 회귀: 모델은 다시 정리할 때마다 같은 능력을 다르게 쓴다. 제목만 맞춰 보면
+    // "공학 문제를 최적화 문제로 환원…"과 "SLAM·로보틱스 문제를 최적화 문제로 환원…"이
+    // 한 달에 나란히 남는다. 그래서 항목이 아니라 요약 단위로 고른다.
+    const timeline = buildMonthlyTimeline([
+      summary([cap("공학 문제를 최적화 문제로 환원해 설명할 수 있게 됨", "2026-07")], {
+        createdAt: "2026-08-01T00:00:00Z",
+      }),
+      summary([cap("SLAM 문제를 최적화 문제로 환원해 설명할 수 있게 됨", "2026-07")], {
+        createdAt: "2026-09-01T00:00:00Z",
+      }),
+    ]);
+
+    expect(countCapabilities(timeline)).toBe(1);
+    expect(timeline[0].capabilities[0].title).toContain("SLAM");
+  });
+
+  it("나중 요약이 다루지 않은 달은 예전 요약이 그대로 남는다", () => {
+    const timeline = buildMonthlyTimeline([
+      summary([cap("5월 능력", "2026-05")], { createdAt: "2026-06-01T00:00:00Z" }),
+      summary([cap("8월 능력", "2026-08")], { createdAt: "2026-09-01T00:00:00Z" }),
+    ]);
+
+    expect(timeline.map((m) => m.month)).toEqual(["2026-08", "2026-05"]);
+    expect(countCapabilities(timeline)).toBe(2);
+  });
+
+  it("같은 요약 안에서 여러 능력은 모두 남는다", () => {
+    const timeline = buildMonthlyTimeline([
+      summary([cap("능력 A", "2026-07"), cap("능력 B", "2026-07"), cap("능력 C", "2026-07")]),
+    ]);
+    expect(timeline[0].capabilities).toHaveLength(3);
+  });
+
   it("겹치면 나중에 만든 요약의 판단이 남는다", () => {
     const timeline = buildMonthlyTimeline([
       summary([cap("증명을 쓸 수 있게 됨", "2026-06", { evidence: "옛 근거" })], {
@@ -71,10 +105,9 @@ describe("buildMonthlyTimeline", () => {
     expect(timeline[0].capabilities[0].evidence).toBe("새 근거");
   });
 
-  it("띄어쓰기·문장부호만 다른 제목은 같은 것으로 본다", () => {
+  it("한 요약 안에서 띄어쓰기·문장부호만 다른 제목은 같은 것으로 본다", () => {
     const timeline = buildMonthlyTimeline([
-      summary([cap("증명을 쓸 수 있게 됨", "2026-06")], { createdAt: "2026-07-01T00:00:00Z" }),
-      summary([cap("증명을  쓸 수 있게 됨.", "2026-06")], { createdAt: "2026-08-01T00:00:00Z" }),
+      summary([cap("증명을 쓸 수 있게 됨", "2026-06"), cap("증명을  쓸 수 있게 됨.", "2026-06")]),
     ]);
 
     expect(countCapabilities(timeline)).toBe(1);
