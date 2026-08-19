@@ -11,8 +11,8 @@ import {
   type SourceForPrompt,
 } from "@/lib/growth-evidence";
 import { buildProbes, mergeHits } from "@/lib/rag/retrieval-plan";
-import { searchChunks, type RetrievedChunk } from "@/lib/rag/search";
-import { hasVoyageKey } from "@/lib/rag/voyage";
+import { searchByVector, type RetrievedChunk } from "@/lib/rag/search";
+import { embedQueries, hasVoyageKey } from "@/lib/rag/voyage";
 
 /** 요약이 다루는 기간 */
 const LOOKBACK_DAYS = 90;
@@ -24,8 +24,16 @@ const MAX_ENTRY_CHARS = 2000;
 const HITS_PER_PROBE = 5;
 /** 탐침 결과를 합친 뒤 프롬프트에 실을 최대 대목 수 */
 const MAX_EXCERPTS = 24;
-/** 이보다 안 닮은 대목은 넣지 않는다 — 아무 대목이나 실리면 모델이 엉뚱한 결론을 낸다 */
-const MIN_EXCERPT_SCORE = 0.35;
+/**
+ * 이보다 안 닮은 대목은 넣지 않는다 — 아무 대목이나 실리면 모델이 엉뚱한 결론을 낸다.
+ *
+ * 값이 낮아 보이지만 실측에 맞춘 것이다. "새로 할 수 있게 된 것" 같은 **추상적인 문장**과
+ * 구체적인 서술 문단 사이의 코사인 유사도는 원래 0.2~0.45 언저리에 머문다
+ * (실제 이 블로그로 재어 본 값이다). 0.35처럼 높게 잡으면 발췌가 통째로 비어
+ * RAG가 조용히 아무 일도 안 하게 된다. 순위를 매기는 건 어차피 점수이고
+ * 개수는 MAX_EXCERPTS가 막으므로, 여기서는 명백한 쓰레기만 걷어내면 된다.
+ */
+const MIN_EXCERPT_SCORE = 0.15;
 
 const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리하는 조력자입니다.
 
@@ -117,9 +125,15 @@ async function retrieveExcerpts(input: GrowthInput): Promise<RetrievedChunk[]> {
     .map((s) => s.title);
 
   try {
+    // 탐침을 한 요청으로 모아 임베딩한다. 하나씩 부르면 요청이 탐침 수만큼 나가
+    // 속도 제한에 걸려 "정리해 줘" 한 번이 몇 분씩 걸린다.
+    const probes = buildProbes(activityTitles);
+    const vectors = await embedQueries(probes);
+
+    // 여기서부터는 API 없이 DB만 — 탐침이 몇 개든 비용이 늘지 않는다.
     const results = await Promise.all(
-      buildProbes(activityTitles).map((probe) =>
-        searchChunks(input.userId, probe, {
+      vectors.map((vector) =>
+        searchByVector(input.userId, vector, {
           limit: HITS_PER_PROBE,
           since: input.periodStart,
           minScore: MIN_EXCERPT_SCORE,

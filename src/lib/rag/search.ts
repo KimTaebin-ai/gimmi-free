@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { embedQuery, EMBED_MODEL, toVectorLiteral } from "@/lib/rag/voyage";
+import { EMBED_MODEL, toVectorLiteral } from "@/lib/rag/voyage";
 
 export interface RetrievedChunk {
   text: string;
@@ -20,14 +20,6 @@ export interface RetrievedChunk {
  * `since`를 주면 그 뒤에 쓴 글로만 좁힌다 — 성장 요약은 "최근 90일"처럼
  * 기간이 정해져 있어서 오래된 글이 끼어들면 안 된다.
  */
-export async function searchChunks(
-  userId: string,
-  query: string,
-  opts: SearchOptions = {},
-): Promise<RetrievedChunk[]> {
-  return searchByVector(userId, await embedQuery(query), opts);
-}
-
 export interface SearchOptions {
   limit?: number;
   since?: Date;
@@ -37,8 +29,9 @@ export interface SearchOptions {
 /**
  * 이미 벡터로 바꾼 질문으로 찾는다.
  *
- * `searchChunks`에서 임베딩 호출만 떼어낸 것 — 이쪽은 Voyage 없이도 부를 수 있어서
- * SQL 자체를 테스트할 수 있다.
+ * 검색어를 문자열로 받지 않는 이유는, 호출부가 탐침 여러 개를 **한 번에** 임베딩한 뒤
+ * (`embedQueries`) 벡터만 넘겨 쓰기 때문이다. 탐침마다 임베딩을 부르면 요청이 그만큼
+ * 나가 속도 제한에 걸린다. 덤으로 이 함수는 Voyage 없이도 부를 수 있어 SQL만 따로 테스트된다.
  */
 export async function searchByVector(
   userId: string,

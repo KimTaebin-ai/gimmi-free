@@ -163,10 +163,20 @@ export async function embedDocuments(texts: string[], deadlineAt?: number): Prom
   return out;
 }
 
-/** 검색어 하나를 임베딩한다. */
-export async function embedQuery(text: string): Promise<number[]> {
-  const [vec] = await embedBatch([text], "query");
-  return vec;
+/**
+ * 검색어들을 **한 요청으로** 임베딩한다.
+ *
+ * 성장 요약은 탐침을 열 개까지 던지는데, 하나씩 부르면 요청도 열 번이라
+ * 속도 제한(결제수단 없는 계정은 분당 3회)에 그대로 걸려 몇 분씩 끌린다.
+ * 검색어는 짧아서 토큰 한도에 걸릴 일도 없으니 한 번에 보내는 게 맞다.
+ */
+export async function embedQueries(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const out: number[][] = [];
+  for (let i = 0; i < texts.length; i += BATCH) {
+    out.push(...(await embedBatch(texts.slice(i, i + BATCH), "query")));
+  }
+  return out;
 }
 
 /** pgvector 리터럴. Prisma가 vector 타입을 모르므로 문자열로 넘겨 ::vector로 캐스팅한다. */
