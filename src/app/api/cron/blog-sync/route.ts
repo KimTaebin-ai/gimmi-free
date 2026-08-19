@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       const r = await syncNaverBlog(id);
       results[id] = r.empty
         ? "no public posts (블로그 아이디/공개 설정 확인 필요)"
-        : `ok (+${r.added} new / ${r.updated} updated)`;
+        : `ok (+${r.added} new / ${r.updated} updated / ${r.bodiesFetched} bodies / ${r.indexed} indexed)`;
     } catch (err) {
       results[id] = `error: ${err instanceof Error ? err.message : "unknown"}`;
     }

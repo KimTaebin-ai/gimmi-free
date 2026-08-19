@@ -35,6 +35,7 @@ model User {
   growthSummaries GrowthSummary[]
   entries         TaskEntry[]
   blogPosts       BlogPost[]
+  docChunks       DocChunk[]
 }
 
 model Account {
@@ -248,8 +249,8 @@ enum BlogSource {
   search
 }
 
-/// 네이버 블로그에서 불러온 글. 본문은 저장하지 않고 원문 링크로 연결한다
-/// (네이버 본문은 iframe 안에 있어 파싱이 취약하고 ToS 위험이 있음).
+/// 네이버 블로그에서 불러온 내 글. 목록은 모바일 목록 API, 본문은 모바일 글 페이지에서 받는다.
+/// 본문은 네이버 HTML이 아니라 우리 블록 배열로 환원해 저장한다(naver/post-body.ts).
 model BlogPost {
   id           String     @id @default(cuid())
   userId       String
@@ -266,10 +267,57 @@ model BlogPost {
   source       BlogSource @default(crawl)
   fetchedAt    DateTime   @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 본문 평문. 앱 안에서 읽기·검색·RAG 색인이 모두 이걸 쓴다.
+  content       String?
+  /// 본문을 우리가 아는 블록(문단/이미지/인용/링크)으로 환원한 것. 리더가 이걸 그린다.
+  /// 네이버 마크업을 그대로 심지 않는 이유는 XSS와 테마 때문(post-body.ts 참고).
+  contentBlocks Json?
+  /// 본문을 마지막으로 받아온 시각. null이면 아직 못 받아왔다는 뜻.
+  bodyFetchedAt DateTime?
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks DocChunk[]
 
   @@unique([userId, logNo])
   @@index([userId, publishedAt])
+}
+
+/// RAG 검색 단위. 지금은 블로그 본문만 색인한다.
+///
+/// sourceId에 BlogPost FK가 걸려 있어 글을 지우면 청크도 함께 사라진다. 그 대신
+/// DocSource를 blog 밖으로 넓히려면(태스크·기록 색인) 이 FK부터 손봐야 한다.
+///
+/// title/url/occurredAt은 BlogPost에서 베껴 둔다 — 검색은 raw SQL(pgvector)로 도는데
+/// 매번 조인하지 않고 바로 프롬프트에 실을 수 있어야 해서다.
+model DocChunk {
+  id         String    @id @default(cuid())
+  userId     String
+  source     DocSource @default(blog)
+  /// BlogPost.id
+  sourceId   String
+  chunkIndex Int
+
+  /// 임베딩에 넣은 텍스트 그대로. 검색 결과로 프롬프트에 실리는 것도 이것.
+  text       String
+  title      String
+  url        String
+  occurredAt DateTime
+
+  /// pgvector. Prisma가 다루지 못하는 타입이라 읽기/쓰기는 $queryRaw로 한다.
+  embedding  Unsupported("vector(1024)")?
+  /// 어떤 모델로 임베딩했는지 — 모델을 바꾸면 이 값으로 재색인 대상을 고른다.
+  embedModel String
+  createdAt  DateTime  @default(now())
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post BlogPost? @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, sourceId, chunkIndex])
+  @@index([userId, occurredAt])
+}
+
+enum DocSource {
+  blog
 }
 
 // ---------- Fitness ----------

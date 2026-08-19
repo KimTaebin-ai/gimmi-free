@@ -55,7 +55,14 @@ src/
       task-push.ts          # 시간 지정 태스크 → Google 이벤트 push(best-effort)
     naver/
       crawl.ts              # 모바일 블로그 목록 API 파서(순수 함수, 실제 응답 픽스처로 테스트)
-      sync.ts               # 목록 크롤링 → BlogPost upsert
+      post-body.ts          # 모바일 글 페이지 → 블록 배열(문단/이미지/인용/링크). 순수 함수
+      sync.ts               # 목록 크롤링 → BlogPost upsert → 본문 수집 → RAG 색인
+    rag/
+      chunk.ts              # 본문 → 청크(문단 경계, 겹침, 청크마다 글 제목). 순수 함수
+      voyage.ts             # Voyage 임베딩 클라이언트(키 없으면 null — RAG만 꺼진다)
+      index-blog.ts         # 청크 임베딩 → DocChunk 저장(pgvector라 raw SQL)
+      search.ts             # 코사인 최근접 검색(searchByVector는 임베딩 없이 테스트 가능)
+      retrieval-plan.ts     # 성장 요약이 무엇으로 검색할지(탐침 만들기·결과 병합). 순수 함수
   hooks/                    # use-tasks, use-calendar, use-media-query
   components/
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
@@ -90,6 +97,8 @@ src/
 - `ALLOWED_EMAILS` — 로그인 허용 이메일(콤마 구분). 화이트리스트 밖 계정은 로그인 거부.
 - `ANTHROPIC_API_KEY` — 홈 화면 성장 요약용. 없으면 앱은 정상 동작하고 그 화면만 안내를 띄운다.
 - `NAVER_BLOG_ID` — 네이버 블로그 아이디. 공개 목록만 읽으므로 인증 불필요.
+- `VOYAGE_API_KEY` — 블로그 본문 RAG 검색용 임베딩. Anthropic은 임베딩 API가 없어서 Voyage를 쓴다.
+  없으면 블로그 읽기·저장은 그대로 되고 성장 요약에서 본문 발췌만 빠진다.
 - `AUTH_URL` — 배포 시 프로덕션 URL(Vercel에선 보통 자동 감지)
 
 ## Google OAuth 주의사항
@@ -176,10 +185,38 @@ src/
     `tags`를 덮어쓰지 않는다(빈 배열로 밀면 예전에 받아 둔 태그가 지워진다).
   - 응답이 `isSuccess: false`인 경우는 "글 0개"와 반드시 구분할 것. 안 그러면 잘못된
     블로그 아이디가 "글이 없네요"로 보인다.
-- **본문 스크래핑 금지.** 네이버 본문은 `PostView.naver` iframe 안이라 파싱이 취약하고
-  ToS 위험이 있다. 카드에는 목록이 주는 `briefContents` 요약만 쓰고 본문은 원문 링크로 연결한다.
+- **본문은 모바일 글 페이지에서 읽는다**(`post-body.ts`). PC의 `PostView.naver`는 본문이
+  iframe 안이라 취약하지만 `m.blog.naver.com/{blogId}/{logNo}`는 본문을 그대로 담고 있다.
+  - 대상은 **내 블로그, 내 글**뿐이다(단일 사용자 앱 + `NAVER_BLOG_ID`). 남의 블로그를
+    긁는 용도로 넓히지 말 것.
+  - **HTML을 그대로 렌더하지 않는다.** SmartEditor ONE(`se-main-container`)의 컴포넌트를
+    우리 블록 배열(문단/제목/인용/이미지/링크/구분선)로 환원해 `BlogPost.contentBlocks`에
+    저장하고, 리더가 우리 컴포넌트로 그린다 — XSS도 막고 다크모드도 따라온다.
+  - 본문은 **없는 글만** 받는다(`bodyFetchedAt`이 null). 글마다 요청이 하나씩 나가므로
+    목록처럼 매번 전량을 훑지 않는다. 한 번에 30개까지, 나머지는 다음 동기화에서.
+  - 본문 파싱에 실패하면 빈 값으로 덮지 말 것 — 다음 동기화에서 다시 시도하게 둔다.
 - 파서는 필드 누락에 방어적으로, 그리고 **순수 함수로**(네트워크는 `sync.ts`가 맡는다).
   실제 응답 픽스처(`__fixtures__/naver-post-list*.json`)로 테스트한다.
+
+## RAG (블로그 본문 검색)
+
+- 목적은 하나다: **성장 요약이 글 제목·요약이 아니라 본문을 근거로 삼게 하는 것.**
+  "그 주제를 설명할 수 있게 됐다"는 판단은 본인이 쓴 문장에서 나와야 한다.
+- 저장소는 **Supabase Postgres + pgvector**, 임베딩은 **Voyage `voyage-4` / 1024차원**.
+  Anthropic은 임베딩 API를 제공하지 않아서 이 부분만 외부 제공자를 쓴다.
+- `DocChunk.embedding`은 Prisma가 다루지 못하는 타입이라 **읽기/쓰기 모두 raw SQL**이다
+  (`index-blog.ts`, `search.ts`). id도 DB 기본값이 안 먹으므로 직접 만든다.
+- **HNSW 인덱스는 일부러 안 깐다.** Prisma 스키마 언어로 표현할 수 없어서 상시 드리프트가
+  되고, `migrate dev`가 매번 지울지 물어본다. 지금 규모(청크 수백 개)에선 전수 탐색이
+  1ms도 안 걸린다. 십만 단위가 되면 그때 raw SQL로 깔고 드리프트를 감수할 것.
+- 청킹은 **문단 경계 + 겹침 150자 + 청크마다 글 제목 머리말**. 제목을 붙이는 이유는
+  검색 결과가 청크 하나만 프롬프트에 실리기 때문이다(맥락 없이 뜬 문단이 되면 안 된다).
+- 성장 요약에는 사용자가 입력하는 질문이 없다. 그래서 검색어를 만들어 쓴다 —
+  고정 탐침 4개 + **그 기간에 실제로 한 일(태스크·일정 제목)** 최대 6개.
+  블로그 글 제목은 탐침에서 뺀다(그 글 자신만 다시 올라와 새 근거가 되지 않는다).
+- 임베딩 호출은 **사용자가 "정리해 줘"를 누를 때만** 일어난다(화면 로딩엔 없음).
+  Claude 호출 규칙과 같은 이유다.
+- 키가 없거나 검색이 실패하면 **조용히 발췌 없이** 요약을 만든다. RAG는 곁들이지 전제가 아니다.
 
 ## 로컬 개발
 

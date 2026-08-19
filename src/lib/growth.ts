@@ -10,6 +10,9 @@ import {
   type EntryForPrompt,
   type SourceForPrompt,
 } from "@/lib/growth-evidence";
+import { buildProbes, mergeHits } from "@/lib/rag/retrieval-plan";
+import { searchChunks, type RetrievedChunk } from "@/lib/rag/search";
+import { hasVoyageKey } from "@/lib/rag/voyage";
 
 /** 요약이 다루는 기간 */
 const LOOKBACK_DAYS = 90;
@@ -17,6 +20,12 @@ const LOOKBACK_DAYS = 90;
 const MAX_TASKS = 120;
 /** 기록 하나당 넣을 최대 길이 — 긴 강의 스크립트는 앞부분만 */
 const MAX_ENTRY_CHARS = 2000;
+/** 탐침 하나가 가져올 블로그 본문 대목 수 */
+const HITS_PER_PROBE = 5;
+/** 탐침 결과를 합친 뒤 프롬프트에 실을 최대 대목 수 */
+const MAX_EXCERPTS = 24;
+/** 이보다 안 닮은 대목은 넣지 않는다 — 아무 대목이나 실리면 모델이 엉뚱한 결론을 낸다 */
+const MIN_EXCERPT_SCORE = 0.35;
 
 const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리하는 조력자입니다.
 
@@ -35,7 +44,10 @@ const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리�
   - [태스크]: 직접 만든 할 일과 거기 남긴 기록
   - [일정]: Google 캘린더에서 온 수업·세미나·미팅
   - [블로그 글]: 실제로 발행한 글. **글로 정리해 남에게 설명할 수 있게 되었다는 신호**라
-    근거로서 무게가 큽니다. 다만 여기 실린 건 요약뿐이니 글 전체를 봤다고 단정하지 마세요.
+    근거로서 무게가 큽니다.
+- 자료 뒤에 "블로그 본문에서 찾은 대목"이 붙을 수 있습니다. 이건 글 전문이 아니라
+  검색으로 뽑아 온 **일부**입니다. 거기 적힌 내용은 본인이 직접 쓴 말이니 강한 근거로
+  쓰되, 대목에 없는 내용을 글 전체에 있었다고 넘겨짚지 마세요. 앞뒤가 잘려 있을 수 있습니다.
 - 한국어로, 담백하게 씁니다. 칭찬이나 격려보다 정확한 관찰이 필요합니다.
 - 기록이 빈약하면 gained를 비우고 그 사실을 headline에 적으세요.`;
 
@@ -65,10 +77,60 @@ function renderSources(sources: SourceForPrompt[]): string {
     .join("\n\n");
 }
 
+/** 검색으로 뽑아 온 블로그 본문 대목들 */
+function renderExcerpts(hits: RetrievedChunk[]): string {
+  if (hits.length === 0) return "";
+
+  const body = hits
+    .map((h, i) => {
+      const date = h.occurredAt.toISOString().slice(0, 10);
+      return `### 대목 ${i + 1} — ${h.title} (${date})\n${h.text}`;
+    })
+    .join("\n\n");
+
+  return `\n\n# 블로그 본문에서 찾은 대목\n\n아래는 위 글들의 본문 중 이 기간의 활동과 관련 있어 보이는 부분만 뽑아 온 것입니다.\n글 전문이 아니라 발췌이며, 앞뒤가 잘려 있을 수 있습니다.\n\n${body}`;
+}
+
 export interface GrowthInput {
+  userId: string;
   sources: SourceForPrompt[];
   periodStart: Date;
   periodEnd: Date;
+}
+
+/**
+ * 블로그 본문에서 이 기간과 관련된 대목을 검색해 온다.
+ *
+ * 이 단계만 임베딩 API를 쓴다. 그래서 화면을 여는 것만으로는 돌지 않고,
+ * 사용자가 "정리해 줘"를 눌렀을 때(= 어차피 Claude를 부를 때)만 불린다.
+ *
+ * Voyage 키가 없거나 검색이 실패하면 조용히 빈 배열을 준다 — 발췌는 있으면 좋은 것이지,
+ * 없다고 요약을 못 만들 이유는 아니다.
+ */
+async function retrieveExcerpts(input: GrowthInput): Promise<RetrievedChunk[]> {
+  if (!hasVoyageKey()) return [];
+
+  // 태스크·일정 제목이 "이 기간에 뭘 했는지"를 말해 준다. 블로그 글 제목은 빼는데,
+  // 그걸로 검색하면 그 글 자기 자신만 다시 올라와 새로운 근거가 되지 않는다.
+  const activityTitles = input.sources
+    .filter((s) => s.origin !== "blog")
+    .map((s) => s.title);
+
+  try {
+    const results = await Promise.all(
+      buildProbes(activityTitles).map((probe) =>
+        searchChunks(input.userId, probe, {
+          limit: HITS_PER_PROBE,
+          since: input.periodStart,
+          minScore: MIN_EXCERPT_SCORE,
+        }),
+      ),
+    );
+    return mergeHits(results, MAX_EXCERPTS);
+  } catch (err) {
+    console.error("[growth] 블로그 본문 검색 실패 — 발췌 없이 진행합니다:", err);
+    return [];
+  }
 }
 
 /** 요약 대상 데이터를 모은다 (LLM 호출 없음 — 테스트/캐시 판단에 재사용) */
@@ -179,7 +241,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     ...blogSources,
   ]).slice(0, MAX_TASKS);
 
-  return { periodStart, periodEnd, sources };
+  return { userId, periodStart, periodEnd, sources };
 }
 
 /**
@@ -195,6 +257,7 @@ export async function generateGrowthSummary(
   const period = `${input.periodStart.toISOString().slice(0, 10)} ~ ${input.periodEnd
     .toISOString()
     .slice(0, 10)}`;
+  const excerpts = await retrieveExcerpts(input);
 
   const response = await client.messages.parse({
     model: CLAUDE_MODEL,
@@ -204,7 +267,7 @@ export async function generateGrowthSummary(
     messages: [
       {
         role: "user",
-        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 발행한 블로그 글, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}`,
+        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 발행한 블로그 글, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}${renderExcerpts(excerpts)}`,
       },
     ],
   });

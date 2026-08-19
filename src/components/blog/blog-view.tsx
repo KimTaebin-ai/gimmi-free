@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ExternalLink, Info, RefreshCw, Search } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, ExternalLink, Info, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +73,9 @@ export function BlogView() {
                   @{status.blogId}
                 </a>
                 {status.total > 0 && ` · ${status.total}개`}
+                {status.total > 0 &&
+                  status.withBody < status.total &&
+                  ` (본문 ${status.withBody}개)`}
                 {status.lastFetchedAt &&
                   ` · ${formatDistanceToNow(new Date(status.lastFetchedAt), {
                     addSuffix: true,
@@ -93,6 +97,18 @@ export function BlogView() {
           {refresh.isPending ? "불러오는 중…" : "새로고침"}
         </Button>
       </header>
+
+      {/* 성장 요약이 본문을 읽으려면 임베딩 색인이 필요하다 — 상태를 숨기지 않고 알려준다 */}
+      {status?.blogId && status.withBody > 0 && !status.search.enabled && (
+        <p className="text-xs text-muted-foreground">
+          VOYAGE_API_KEY를 넣으면 본문을 검색 색인으로 만들어 성장 요약이 글 내용까지 읽습니다.
+        </p>
+      )}
+      {status?.search.enabled && status.search.indexedPosts > 0 && (
+        <p className="text-xs text-muted-foreground">
+          성장 요약이 검색할 수 있는 글 {status.search.indexedPosts}개
+        </p>
+      )}
 
       {notice && (
         <div
@@ -156,7 +172,8 @@ export function BlogView() {
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {(posts?.length ?? 0) === 0 ? (
             <>
-              아직 불러온 글이 없어요. &quot;새로고침&quot;을 눌러 네이버에서 글을 가져오세요.
+              아직 불러온 글이 없어요. &quot;새로고침&quot;을 눌러 네이버에서 글과 본문을
+              가져오세요.
             </>
           ) : (
             "조건에 맞는 글이 없어요."
@@ -165,12 +182,11 @@ export function BlogView() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((post) => (
-            <a
+            // 카드를 누르면 앱 안에서 읽고, 네이버로 나가는 건 아래 버튼이 맡는다.
+            // 링크 안에 링크를 넣을 수 없어서 카드 전체를 덮는 오버레이 링크를 쓴다.
+            <div
               key={post.id}
-              href={post.url}
-              target="_blank"
-              rel="noreferrer"
-              className="group flex flex-col overflow-hidden rounded-lg border transition-colors hover:bg-accent/40"
+              className="group relative flex flex-col overflow-hidden rounded-lg border transition-colors hover:bg-accent/40"
             >
               {post.thumbnailUrl && (
                 // 네이버 CDN 이미지라 next/image 최적화 대신 원본을 그대로 쓴다
@@ -185,7 +201,7 @@ export function BlogView() {
               <div className="flex min-w-0 flex-1 flex-col p-3">
                 <div className="flex items-start gap-1">
                   <h2 className="line-clamp-2 flex-1 text-sm font-medium">{post.title}</h2>
-                  <ExternalLink className="mt-0.5 size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  <BookOpen className="mt-0.5 size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </div>
                 {post.summary && (
                   <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
@@ -199,9 +215,26 @@ export function BlogView() {
                       {post.category}
                     </Badge>
                   )}
+                  {!post.bodyFetchedAt && <span>· 본문 없음</span>}
+                  <a
+                    href={post.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="네이버 원문 열기"
+                    aria-label={`${post.title} — 네이버 원문 열기`}
+                    className="relative z-10 ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 hover:bg-accent hover:text-foreground"
+                  >
+                    <ExternalLink className="size-3" />
+                    원문
+                  </a>
                 </div>
               </div>
-            </a>
+              <Link
+                href={`/blog/${post.logNo}`}
+                className="absolute inset-0"
+                aria-label={`${post.title} 앱에서 읽기`}
+              />
+            </div>
           ))}
         </div>
       )}
