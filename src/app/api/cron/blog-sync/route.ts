@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getBlogId, syncNaverBlog } from "@/lib/naver/sync";
 
 /**
- * 네이버 블로그 RSS 주기 동기화 (vercel.json에서 1시간마다 호출).
+ * 네이버 블로그 주기 동기화 (vercel.json에서 1시간마다 호출).
  * CRON_SECRET이 설정돼 있으면 Bearer 검증을 요구한다.
  */
 export async function GET(request: Request) {
@@ -23,8 +23,8 @@ export async function GET(request: Request) {
   for (const { id } of users) {
     try {
       const r = await syncNaverBlog(id);
-      results[id] = r.emptyFeed
-        ? "empty feed (RSS 설정 확인 필요)"
+      results[id] = r.empty
+        ? "no public posts (블로그 아이디/공개 설정 확인 필요)"
         : `ok (+${r.added} new / ${r.updated} updated)`;
     } catch (err) {
       results[id] = `error: ${err instanceof Error ? err.message : "unknown"}`;

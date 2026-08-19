@@ -241,6 +241,9 @@ model CalendarSyncState {
 // ---------- Blog (네이버 블로그 불러오기) ----------
 
 enum BlogSource {
+  /// 모바일 블로그 목록 API 크롤링(현재 경로)
+  crawl
+  /// 네이버 RSS. 서버가 빈 피드를 주게 되어 더는 쓰지 않는다
   rss
   search
 }
@@ -260,7 +263,7 @@ model BlogPost {
   category     String?
   tags         String[]   @default([])
   publishedAt  DateTime
-  source       BlogSource @default(rss)
+  source       BlogSource @default(crawl)
   fetchedAt    DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

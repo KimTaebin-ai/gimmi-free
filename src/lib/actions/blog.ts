@@ -57,11 +57,11 @@ export async function refreshBlogPosts(): Promise<BlogSyncResponse> {
   try {
     const r = await syncNaverBlog(userId);
 
-    if (r.emptyFeed) {
+    if (r.empty) {
       return {
         ok: false,
         message:
-          "RSS 피드가 비어 있습니다. 네이버 블로그 [관리 > 기본 설정 > RSS/오픈API]에서 RSS 공개 설정을 켠 뒤 다시 시도해 주세요. (블로그에 공개 글이 있어도 RSS가 꺼져 있으면 빈 피드가 옵니다.)",
+          "네이버에서 공개 글을 하나도 찾지 못했습니다. 블로그 아이디(NAVER_BLOG_ID)가 맞는지, 글이 전체공개인지 확인해 주세요.",
       };
     }
 

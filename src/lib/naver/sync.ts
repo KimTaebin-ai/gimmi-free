@@ -1,17 +1,22 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { parseNaverRss, rssUrlFor, type NaverRssItem } from "@/lib/naver/rss";
+import {
+  NaverPostListError,
+  parsePostList,
+  postListUrl,
+  refererFor,
+  type NaverBlogPost,
+} from "@/lib/naver/crawl";
 
 export interface BlogSyncResult {
   /** 새로 저장된 글 */
   added: number;
   /** 이미 있어 갱신된 글 */
   updated: number;
-  /** 피드가 준 글 수 */
+  /** 네이버가 준 글 수 */
   fetched: number;
-  blogTitle: string | null;
-  /** 피드는 정상인데 글이 0건 — 대개 블로그 RSS 설정이 꺼져 있다 */
-  emptyFeed: boolean;
+  /** 목록은 정상인데 공개 글이 0건 */
+  empty: boolean;
 }
 
 export class BlogSyncError extends Error {
@@ -21,27 +26,72 @@ export class BlogSyncError extends Error {
   }
 }
 
+/** 안전장치. 한 번에 이 이상은 걷지 않는다(30 × 20 = 600글). */
+const MAX_PAGES = 20;
+
 export function getBlogId(): string | null {
   return process.env.NAVER_BLOG_ID?.trim() || null;
 }
 
-async function fetchRss(blogId: string): Promise<string> {
-  const res = await fetch(rssUrlFor(blogId), {
+/**
+ * 목록 한 페이지.
+ *
+ * 브라우저인 척하지 않는다 — 이 엔드포인트가 막는 건 UA가 아니라 Referer 누락이라
+ * UA는 우리 앱 이름 그대로 보낸다.
+ */
+async function fetchPage(blogId: string, page: number): Promise<unknown> {
+  const res = await fetch(postListUrl(blogId, page), {
     cache: "no-store",
-    headers: { "User-Agent": "PersonalLifeHub/1.0 (+RSS reader)" },
+    headers: {
+      "User-Agent": "PersonalLifeHub/1.0 (personal blog archiver)",
+      Referer: refererFor(blogId),
+      Accept: "application/json",
+    },
   });
+
   if (!res.ok) {
     throw new BlogSyncError(
-      `네이버 RSS를 불러오지 못했습니다 (HTTP ${res.status}). 블로그 아이디를 확인해 주세요.`,
+      res.status === 403 || res.status === 404
+        ? `네이버가 '${blogId}' 블로그 목록을 주지 않았습니다 (HTTP ${res.status}). 블로그 아이디를 확인해 주세요.`
+        : `네이버 블로그 목록을 불러오지 못했습니다 (HTTP ${res.status}). 잠시 후 다시 시도해 주세요.`,
     );
   }
-  return res.text();
+
+  try {
+    return await res.json();
+  } catch {
+    throw new BlogSyncError("네이버가 예상과 다른 응답을 보냈습니다. 잠시 후 다시 시도해 주세요.");
+  }
+}
+
+/** 마지막 페이지까지 걸으며 글을 모은다. logNo로 중복을 지운다. */
+async function crawlAllPosts(blogId: string): Promise<NaverBlogPost[]> {
+  const byLogNo = new Map<string, NaverBlogPost>();
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    let parsed;
+    try {
+      parsed = parsePostList(await fetchPage(blogId, page), blogId);
+    } catch (err) {
+      if (err instanceof NaverPostListError) {
+        throw new BlogSyncError(
+          `네이버가 '${blogId}' 블로그 목록을 거절했습니다: ${err.message} 블로그 아이디를 확인해 주세요.`,
+        );
+      }
+      throw err;
+    }
+
+    for (const item of parsed.items) byLogNo.set(item.logNo, item);
+    if (!parsed.hasMore) break;
+  }
+
+  return [...byLogNo.values()];
 }
 
 async function upsertItems(
   userId: string,
   blogId: string,
-  items: NaverRssItem[],
+  items: NaverBlogPost[],
 ): Promise<{ added: number; updated: number }> {
   if (items.length === 0) return { added: 0, updated: 0 };
 
@@ -69,7 +119,7 @@ async function upsertItems(
         category: item.category,
         tags: item.tags,
         publishedAt: item.publishedAt,
-        source: "rss",
+        source: "crawl",
       },
       update: {
         title: item.title,
@@ -77,8 +127,8 @@ async function upsertItems(
         summary: item.summary,
         thumbnailUrl: item.thumbnailUrl,
         category: item.category,
-        tags: item.tags,
         publishedAt: item.publishedAt,
+        source: "crawl",
         fetchedAt: new Date(),
       },
     });
@@ -89,10 +139,13 @@ async function upsertItems(
 }
 
 /**
- * RSS를 읽어 로컬에 반영한다.
+ * 네이버 블로그 목록을 걷어 로컬에 반영한다.
  *
- * 증분: RSS는 최근 글만 주므로 전체를 받아 logNo로 upsert하는 편이 단순하고 안전하다.
- * (마지막 발행일로 잘라내면 과거 글이 수정됐을 때 반영되지 않는다.)
+ * 증분 대신 매번 전량을 훑는다. 목록 API는 글 하나당 필드 몇 개뿐이라 가볍고,
+ * 발행일로 잘라내면 과거 글이 수정됐을 때 반영되지 않기 때문이다.
+ *
+ * `tags`는 갱신하지 않는다 — 목록 API가 태그를 주지 않아서 매번 빈 배열이 오는데,
+ * 그걸로 덮으면 예전에 RSS로 받아 둔 태그가 지워진다.
  */
 export async function syncNaverBlog(userId: string): Promise<BlogSyncResult> {
   const blogId = getBlogId();
@@ -102,15 +155,8 @@ export async function syncNaverBlog(userId: string): Promise<BlogSyncResult> {
     );
   }
 
-  const xml = await fetchRss(blogId);
-  const feed = parseNaverRss(xml);
-  const { added, updated } = await upsertItems(userId, blogId, feed.items);
+  const items = await crawlAllPosts(blogId);
+  const { added, updated } = await upsertItems(userId, blogId, items);
 
-  return {
-    added,
-    updated,
-    fetched: feed.items.length,
-    blogTitle: feed.blogTitle,
-    emptyFeed: feed.items.length === 0,
-  };
+  return { added, updated, fetched: items.length, empty: items.length === 0 };
 }

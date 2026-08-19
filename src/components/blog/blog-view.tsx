@@ -156,7 +156,7 @@ export function BlogView() {
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {(posts?.length ?? 0) === 0 ? (
             <>
-              아직 불러온 글이 없어요. &quot;새로고침&quot;을 눌러 RSS에서 최근 글을 가져오세요.
+              아직 불러온 글이 없어요. &quot;새로고침&quot;을 눌러 네이버에서 글을 가져오세요.
             </>
           ) : (
             "조건에 맞는 글이 없어요."

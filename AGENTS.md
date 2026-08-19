@@ -54,8 +54,8 @@ src/
       sync.ts               # Google → 로컬 캐시 pull(syncToken 증분, 410 시 전체 폴백)
       task-push.ts          # 시간 지정 태스크 → Google 이벤트 push(best-effort)
     naver/
-      rss.ts                # 네이버 블로그 RSS 파서(순수 함수, 실제 피드 픽스처로 테스트)
-      sync.ts               # RSS → BlogPost upsert
+      crawl.ts              # 모바일 블로그 목록 API 파서(순수 함수, 실제 응답 픽스처로 테스트)
+      sync.ts               # 목록 크롤링 → BlogPost upsert
   hooks/                    # use-tasks, use-calendar, use-media-query
   components/
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
@@ -89,7 +89,7 @@ src/
 - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — Google Cloud OAuth 클라이언트
 - `ALLOWED_EMAILS` — 로그인 허용 이메일(콤마 구분). 화이트리스트 밖 계정은 로그인 거부.
 - `ANTHROPIC_API_KEY` — 홈 화면 성장 요약용. 없으면 앱은 정상 동작하고 그 화면만 안내를 띄운다.
-- `NAVER_BLOG_ID` — 네이버 블로그 아이디. RSS만 쓰므로 인증 불필요.
+- `NAVER_BLOG_ID` — 네이버 블로그 아이디. 공개 목록만 읽으므로 인증 불필요.
 - `AUTH_URL` — 배포 시 프로덕션 URL(Vercel에선 보통 자동 감지)
 
 ## Google OAuth 주의사항
@@ -161,14 +161,25 @@ src/
 ## 네이버 블로그 주의사항
 
 - 네이버에는 **내 글 목록을 주는 공식 read API가 없다.** 로그인 오픈API는 *쓰기*만 있고,
-  검색 API는 키워드 기반이라 전량 보장이 안 된다. 그래서 **RSS가 사실상 유일한 정식 경로**다.
-  - 피드: `https://rss.blog.naver.com/{blogId}.xml` — 인증 불필요, **최근 글만**.
-  - 블로그에 공개 글이 있어도 **블로그 설정에서 RSS가 꺼져 있으면 빈 채널**이 온다
-    (HTTP 200 + item 0개). 이 경우를 오류가 아니라 "설정 확인" 안내로 다룰 것.
+  검색 API는 키워드 기반이라 전량 보장이 안 된다.
+- **RSS는 폐기했다.** `https://rss.blog.naver.com/{blogId}.xml`이 채널 제목·링크까지 전부
+  빈 값인 껍데기 XML을 돌려준다(HTTP 200 + item 0개). 블로그 RSS 설정과 무관한 네이버 쪽
+  문제라 우리가 손쓸 수 없다. 되살리지 말 것.
+- **지금 경로: 모바일 블로그 목록 API 크롤링**(`src/lib/naver/crawl.ts`).
+  - `https://m.blog.naver.com/api/blogs/{blogId}/post-list?categoryNo=0&itemCount=30&page=N`
+  - ⚠️ **Referer가 없으면 403**이다(UA는 아무 값이나 통과). 그래서 브라우저인 척하지 않고
+    정직한 UA + `https://m.blog.naver.com/{blogId}` Referer를 보낸다.
+  - `itemCount`는 30까지. 100은 거절당한다. 빈 페이지가 올 때까지 걸으면 **전체 글**을 받는다
+    (RSS는 최근 글만 줬다). 안전장치로 20페이지에서 멈춘다.
+  - `addDate`가 epoch ms라 날짜뿐이던 RSS `pubDate`보다 정확하고, 카테고리 *이름*과
+    썸네일 주소가 그대로 들어 있다. 대신 **태그는 주지 않는다** — 그래서 upsert 때
+    `tags`를 덮어쓰지 않는다(빈 배열로 밀면 예전에 받아 둔 태그가 지워진다).
+  - 응답이 `isSuccess: false`인 경우는 "글 0개"와 반드시 구분할 것. 안 그러면 잘못된
+    블로그 아이디가 "글이 없네요"로 보인다.
 - **본문 스크래핑 금지.** 네이버 본문은 `PostView.naver` iframe 안이라 파싱이 취약하고
-  ToS 위험이 있다. 카드에는 RSS `description` 요약만 쓰고 본문은 원문 링크로 연결한다.
-- 파서는 필드 누락에 방어적으로: `guid`(추적 파라미터 없는 URL) 우선, 없으면 `link`에서
-  쿼리를 떼고 마지막 숫자 세그먼트를 `logNo`로 쓴다.
+  ToS 위험이 있다. 카드에는 목록이 주는 `briefContents` 요약만 쓰고 본문은 원문 링크로 연결한다.
+- 파서는 필드 누락에 방어적으로, 그리고 **순수 함수로**(네트워크는 `sync.ts`가 맡는다).
+  실제 응답 픽스처(`__fixtures__/naver-post-list*.json`)로 테스트한다.
 
 ## 로컬 개발
 
