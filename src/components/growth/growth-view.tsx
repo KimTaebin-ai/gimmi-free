@@ -11,21 +11,20 @@ import {
   Info,
   ListChecks,
   RefreshCw,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   getGrowthJobState,
   getGrowthSummary,
+  listCapabilityTimeline,
   listGrowthEvidence,
   loadGrowthSummary,
   startGrowthSummary,
 } from "@/lib/actions/growth";
-import { CapabilityTimeline } from "@/components/growth/capability-timeline";
-import { LevelBadge } from "@/components/growth/level-badge";
+import { GainedByMonth } from "@/components/growth/gained-by-month";
 import { SummaryHistory } from "@/components/growth/summary-history";
+import { groupByMonth, monthKey } from "@/lib/growth-timeline";
 
 export function GrowthView({ userName }: { userName: string }) {
   const qc = useQueryClient();
@@ -36,6 +35,10 @@ export function GrowthView({ userName }: { userName: string }) {
   const { data: evidence } = useQuery({
     queryKey: ["growth-evidence"],
     queryFn: () => listGrowthEvidence(),
+  });
+  const { data: timeline } = useQuery({
+    queryKey: ["growth-timeline"],
+    queryFn: () => listCapabilityTimeline(),
   });
 
   // null이면 최신 요약을 보고 있다는 뜻. 지난 정리를 고르면 그 id가 들어온다.
@@ -84,6 +87,12 @@ export function GrowthView({ userName }: { userName: string }) {
 
   const latest = result?.ok ? result.data : null;
   const summary = pickedId !== null ? (picked ?? null) : latest;
+
+  // 지난 정리를 펼쳐 봤다면 그 요약이 본 것만, 아니면 지금까지 쌓인 전부를 달별로 보여 준다
+  const months =
+    pickedId !== null && summary
+      ? groupByMonth(summary.content.gained, monthKey(new Date(summary.periodEnd)))
+      : (timeline ?? []);
   const sourceCount = evidence?.rows.length;
   const error = result && !result.ok ? result.error : null;
 
@@ -197,39 +206,8 @@ export function GrowthView({ userName }: { userName: string }) {
             {summary.content.headline}
           </p>
 
-          {/* 새로 할 수 있게 된 것 — 이 화면의 본론 */}
-          <section>
-            <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-              <Sparkles className="size-4 text-emerald-500" />
-              새로 할 수 있게 된 것
-              <span className="font-normal text-muted-foreground">
-                {summary.content.gained.length}
-              </span>
-            </h2>
-            {summary.content.gained.length === 0 ? (
-              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                이 기간에는 새로 할 수 있게 된 것을 근거 있게 찾지 못했어요. 태스크·일정에
-                &quot;느낀 점&quot;을 남기거나 블로그 글을 불러오면 더 정확해집니다.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {summary.content.gained.map((g, i) => (
-                  <li key={i} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-medium">{g.title}</span>
-                      <LevelBadge level={g.level} />
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
-                        {g.area}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      {g.evidence}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {/* 새로 할 수 있게 된 것 — 이 화면의 본론. 달별 축적까지 여기서 한 번에 본다 */}
+          <GainedByMonth months={months} />
 
           {/* 아직 쌓이는 중 */}
           {summary.content.inProgress.length > 0 && (
@@ -273,9 +251,6 @@ export function GrowthView({ userName }: { userName: string }) {
           </section>
         </div>
       )}
-
-      {/* 달을 지나며 쌓인 것 — 최신 요약 하나로는 보이지 않는 축적 */}
-      <CapabilityTimeline />
 
       <SummaryHistory selectedId={pickedId} onSelect={setPickedId} />
 

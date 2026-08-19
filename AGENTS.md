@@ -67,7 +67,7 @@ src/
       retrieval-plan.ts     # 성장 요약이 무엇으로 검색할지(탐침 만들기·결과 병합). 순수 함수
   hooks/                    # use-tasks, use-calendar, use-media-query
   components/
-    growth/                 # growth-view(홈), capability-timeline(월별), summary-history, evidence-view
+    growth/                 # growth-view(홈), gained-by-month(본론), summary-history, evidence-view
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
     calendar/               # calendar-view(월/주/일/목록 전환), month/time-grid/agenda, item-detail
   app/api/cron/calendar-sync/ # Vercel Cron 15분 주기 pull (vercel.json)
@@ -164,6 +164,9 @@ src/
 - LLM 호출은 **사용자가 버튼을 누를 때만** 한다(화면 로딩만으로 과금되지 않도록).
   결과는 `GrowthSummary`에 **누적 저장**한다(덮어쓰지 않는다). 모델/프롬프트는 `src/lib/growth.ts`.
   - 요약을 다시 만들어도 예전 것은 남는다. "지난 정리" 목록에서 골라 계속 볼 수 있다.
+  - **"새로 할 수 있게 된 것"과 월별 축적은 한 화면 한 섹션이다**(`gained-by-month.tsx`).
+    따로 두면 최신 요약의 목록이 타임라인 맨 앞 달과 같은 내용이라 같은 걸 두 번 보여 주게 되고,
+    정작 축적은 스크롤 아래로 밀린다. 위에 달 요약 줄(개수)을 두고 눌러서 좁힌다.
   - **월별 타임라인**은 저장된 요약을 겹쳐 만든다. 규칙은 하나다 —
     **한 달의 내용은 그 달을 다룬 가장 나중 요약의 것만 쓴다.**
     제목이 같은 것만 합치는 방식은 안 통한다. 모델은 같은 능력을 매번 다르게 쓰기 때문이다

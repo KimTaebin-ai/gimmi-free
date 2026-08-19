@@ -74,3 +74,25 @@ export function buildMonthlyTimeline(summaries: SummaryForTimeline[]): MonthlyCa
 export function countCapabilities(timeline: MonthlyCapabilities[]): number {
   return timeline.reduce((n, m) => n + m.capabilities.length, 0);
 }
+
+/**
+ * 능력 목록을 달별로 묶는다(요약 하나짜리 버전).
+ *
+ * 여러 요약을 겹치는 `buildMonthlyTimeline`과 달리 이건 이미 고른 한 벌을 나누기만 한다.
+ * 지난 정리를 펼쳐 볼 때처럼 "이 요약이 본 것"만 달별로 보여 줘야 하는 자리에서 쓴다.
+ */
+export function groupByMonth(
+  capabilities: GainedCapability[],
+  fallbackMonth: string,
+): MonthlyCapabilities[] {
+  const byMonth = new Map<string, GainedCapability[]>();
+
+  for (const c of capabilities) {
+    const month = MONTH_PATTERN.test(c.month ?? "") ? c.month : fallbackMonth;
+    byMonth.set(month, [...(byMonth.get(month) ?? []), { ...c, month }]);
+  }
+
+  return [...byMonth.entries()]
+    .map(([month, items]) => ({ month, capabilities: items }))
+    .sort((a, b) => b.month.localeCompare(a.month));
+}
