@@ -21,6 +21,7 @@ function src(
     tags: [],
     note,
     body,
+    ref: null,
     entries: Array.from({ length: entries }, (_, i) => ({
       kind: "reflection",
       title: null,

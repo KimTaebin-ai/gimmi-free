@@ -16,6 +16,12 @@ export const GainedCapabilitySchema = z.object({
       "newly_able=전에는 못 하던 것, improved=하던 것이 확실히 나아짐, practiced=반복해 익숙해짐",
     ),
   area: z.string().describe("분야 (예: 연구, 개발, 운동, 커뮤니케이션)"),
+  month: z
+    .string()
+    .describe(
+      "이 능력이 드러난 시점의 연-월을 'YYYY-MM'으로. 근거가 된 태스크·일정·글의 날짜를 보고 정한다. " +
+        "여러 달에 걸쳐 있으면 그렇게 말할 수 있게 된 시점(가장 나중 달)을 쓴다.",
+    ),
 });
 
 export const GrowthSummarySchema = z.object({
@@ -51,6 +57,13 @@ export const LEVEL_LABELS: Record<GainedCapability["level"], string> = {
   improved: "나아짐",
   practiced: "익숙해짐",
 };
+
+/** 월별 타임라인의 한 칸 */
+export interface MonthlyCapabilities {
+  /** "2026-07" */
+  month: string;
+  capabilities: GainedCapability[];
+}
 
 export interface GrowthSummaryResult {
   content: GrowthSummaryContent;

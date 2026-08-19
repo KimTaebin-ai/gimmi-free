@@ -47,6 +47,7 @@ src/
     date-only.ts            # @db.Date 컬럼용. 날짜만 있는 값은 "yyyy-MM-dd"로 주고받고 UTC 자정 저장
     fitness-stats.ts        # 1RM(Epley)·볼륨·부위별 집계·이동평균 (순수 함수, 테스트 대상)
     growth-evidence.ts      # 성장 근거의 형태·세기 판정(순수 함수). growth.ts가 이걸 쓴다
+    growth-timeline.ts      # 저장된 요약들 → 월별 능력 타임라인(겹침 제거). 순수 함수
     settings.ts             # User.settings(JSON) 읽기/쓰기
     google/
       tokens.ts             # access token 획득 + refresh(만료 시 Account 갱신)
@@ -65,6 +66,7 @@ src/
       retrieval-plan.ts     # 성장 요약이 무엇으로 검색할지(탐침 만들기·결과 병합). 순수 함수
   hooks/                    # use-tasks, use-calendar, use-media-query
   components/
+    growth/                 # growth-view(홈), capability-timeline(월별), summary-history, evidence-view
     tasks/                  # tasks-view(3-pane 오케스트레이터), task-list/item/detail, quick-add, sidebar
     calendar/               # calendar-view(월/주/일/목록 전환), month/time-grid/agenda, item-detail
   app/api/cron/calendar-sync/ # Vercel Cron 15분 주기 pull (vercel.json)
@@ -150,7 +152,15 @@ src/
   - 블로그는 `summary`가 아니라 **`content`(본문)를 프롬프트에 넣는다**(최대 6000자).
     200자 요약으로는 무엇을 이해했는지 알 수 없다.
 - LLM 호출은 **사용자가 버튼을 누를 때만** 한다(화면 로딩만으로 과금되지 않도록).
-  결과는 `GrowthSummary`에 캐시. 모델/프롬프트는 `src/lib/growth.ts`.
+  결과는 `GrowthSummary`에 **누적 저장**한다(덮어쓰지 않는다). 모델/프롬프트는 `src/lib/growth.ts`.
+  - 요약을 다시 만들어도 예전 것은 남는다. "지난 정리" 목록에서 골라 계속 볼 수 있다.
+  - **월별 타임라인**은 저장된 요약을 전부 겹쳐 만든다. 요약은 90일 창이라 여러 번 만들면
+    기간이 겹치므로, `growth-timeline.ts`가 (달 + 제목)으로 중복을 지우고 **나중 요약**을 남긴다.
+    그래서 능력마다 `month`("YYYY-MM")를 모델이 근거 날짜에서 판단해 붙인다.
+  - `/growth/evidence`는 **요약이 무엇을 보고 있는지** 그대로 보여 주는 화면이다.
+    성장 요약은 근거가 없으면 침묵하도록 만들었으므로 "왜 비었지"의 답은 늘 기록 쪽에 있다.
+    근거가 약한 항목(제목만 있는 것)을 추려 주고 그 자리에서 느낀 점을 남길 수 있다.
+    프롬프트에 안 쓰이는 `SourceForPrompt.ref`가 이 화면 때문에 있다.
 - Claude API를 쓸 때는 `claude-api` 스킬을 먼저 읽을 것(모델 ID·파라미터가 자주 바뀐다).
   현재: `claude-opus-5`, 구조화 출력은 `output_config.format` + `zodOutputFormat`,
   `temperature`/`budget_tokens`는 400. `stop_reason: "refusal"`을 먼저 확인할 것.

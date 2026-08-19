@@ -211,6 +211,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
       orderBy: { publishedAt: "desc" },
       take: MAX_TASKS,
       select: {
+        logNo: true,
         title: true,
         summary: true,
         content: true,
@@ -247,6 +248,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     note: t.note,
     body: null,
     entries: t.entries,
+    ref: { type: "task", id: t.id },
   }));
 
   const eventSources: SourceForPrompt[] = eventRows.map((e) => ({
@@ -258,6 +260,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     note: e.description,
     body: null,
     entries: byEvent.get(e.googleEventId) ?? [],
+    ref: { type: "event", googleEventId: e.googleEventId },
   }));
 
   const blogSources: SourceForPrompt[] = blogRows.map((b) => ({
@@ -270,6 +273,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     // 본문이 성장 판정의 진짜 근거다. 요약만 넣던 시절엔 글 한 편이 일정 한 줄과 같은 무게였다.
     body: b.content,
     entries: [],
+    ref: { type: "blog", logNo: b.logNo },
   }));
 
   // 근거가 강한 것부터 — 프롬프트 앞쪽에 오도록

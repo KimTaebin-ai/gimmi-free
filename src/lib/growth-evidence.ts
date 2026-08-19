@@ -28,7 +28,19 @@ export interface SourceForPrompt {
    */
   body: string | null;
   entries: EntryForPrompt[];
+  /**
+   * 이 근거가 가리키는 실제 항목.
+   *
+   * 프롬프트에는 안 쓰이지만 화면에는 필요하다 — "근거가 약한 항목"을 보여 주고
+   * 거기에 바로 메모를 붙이려면 무엇에 붙일지 알아야 하기 때문.
+   */
+  ref: SourceRef | null;
 }
+
+export type SourceRef =
+  | { type: "task"; id: string }
+  | { type: "event"; googleEventId: string }
+  | { type: "blog"; logNo: string };
 
 export const ORIGIN_LABEL: Record<SourceForPrompt["origin"], string> = {
   task: "[태스크]",

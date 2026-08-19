@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -7,6 +9,7 @@ import {
   ArrowUpRight,
   CircleDashed,
   Info,
+  ListChecks,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -14,17 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  getGrowthSourceCount,
+  getGrowthSummary,
+  listGrowthEvidence,
   loadGrowthSummary,
   refreshGrowthSummary,
 } from "@/lib/actions/growth";
-import { LEVEL_LABELS, type GainedCapability } from "@/lib/growth-types";
-
-const LEVEL_STYLES: Record<GainedCapability["level"], string> = {
-  newly_able: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  improved: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  practiced: "bg-muted text-muted-foreground",
-};
+import { CapabilityTimeline } from "@/components/growth/capability-timeline";
+import { LevelBadge } from "@/components/growth/level-badge";
+import { SummaryHistory } from "@/components/growth/summary-history";
 
 export function GrowthView({ userName }: { userName: string }) {
   const qc = useQueryClient();
@@ -32,17 +32,33 @@ export function GrowthView({ userName }: { userName: string }) {
     queryKey: ["growth"],
     queryFn: () => loadGrowthSummary(),
   });
-  const { data: sourceCount } = useQuery({
-    queryKey: ["growth-source-count"],
-    queryFn: () => getGrowthSourceCount(),
+  const { data: evidence } = useQuery({
+    queryKey: ["growth-evidence"],
+    queryFn: () => listGrowthEvidence(),
+  });
+
+  // null이면 최신 요약을 보고 있다는 뜻. 지난 정리를 고르면 그 id가 들어온다.
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const { data: picked } = useQuery({
+    queryKey: ["growth-summary", pickedId],
+    queryFn: () => getGrowthSummary(pickedId!),
+    enabled: pickedId !== null,
   });
 
   const refresh = useMutation({
     mutationFn: () => refreshGrowthSummary(),
-    onSuccess: (next) => qc.setQueryData(["growth"], next),
+    onSuccess: (next) => {
+      setPickedId(null);
+      qc.setQueryData(["growth"], next);
+      // 새 요약이 목록·타임라인에도 반영돼야 한다
+      qc.invalidateQueries({ queryKey: ["growth-history"] });
+      qc.invalidateQueries({ queryKey: ["growth-timeline"] });
+    },
   });
 
-  const summary = result?.ok ? result.data : null;
+  const latest = result?.ok ? result.data : null;
+  const summary = pickedId !== null ? (picked ?? null) : latest;
+  const sourceCount = evidence?.rows.length;
   const error = result && !result.ok ? result.error : null;
   const pending = refresh.isPending;
 
@@ -78,6 +94,15 @@ export function GrowthView({ userName }: { userName: string }) {
           ) : (
             <>지금 요약에 쓸 수 있는 기록 {sourceCount ?? 0}건</>
           )}
+          {evidence && (
+            <>
+              {" · "}
+              <Link href="/growth/evidence" className="text-primary hover:underline">
+                근거 살펴보기
+                {evidence.weakCount > 0 && ` (보강 ${evidence.weakCount}건)`}
+              </Link>
+            </>
+          )}
         </div>
         <Button
           size="sm"
@@ -89,6 +114,21 @@ export function GrowthView({ userName }: { userName: string }) {
           {pending ? "정리하는 중…" : summary ? "다시 정리" : "요약 만들기"}
         </Button>
       </div>
+
+      {pickedId !== null && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          <Info className="size-3.5 shrink-0" />
+          지난 정리를 보고 있습니다.
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-1.5 text-xs"
+            onClick={() => setPickedId(null)}
+          >
+            최신으로
+          </Button>
+        </div>
+      )}
 
       {isLoading && <div className="h-48 animate-pulse rounded-lg bg-muted" />}
 
@@ -134,12 +174,7 @@ export function GrowthView({ userName }: { userName: string }) {
                   <li key={i} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-medium">{g.title}</span>
-                      <Badge
-                        variant="secondary"
-                        className={cn("px-1.5 py-0 text-[10px]", LEVEL_STYLES[g.level])}
-                      >
-                        {LEVEL_LABELS[g.level]}
-                      </Badge>
+                      <LevelBadge level={g.level} />
                       <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
                         {g.area}
                       </Badge>
@@ -195,6 +230,29 @@ export function GrowthView({ userName }: { userName: string }) {
           </section>
         </div>
       )}
+
+      {/* 달을 지나며 쌓인 것 — 최신 요약 하나로는 보이지 않는 축적 */}
+      <CapabilityTimeline />
+
+      <SummaryHistory selectedId={pickedId} onSelect={setPickedId} />
+
+      {/* 근거가 비면 요약도 빈다. 채우러 갈 길을 늘 열어 둔다 */}
+      <Link
+        href="/growth/evidence"
+        className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm transition-colors hover:bg-accent/40"
+      >
+        <ListChecks className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          요약이 보고 있는 기록 살펴보기
+          {evidence && evidence.weakCount > 0 && (
+            <span className="text-muted-foreground">
+              {" "}
+              · 근거가 약한 항목 {evidence.weakCount}건
+            </span>
+          )}
+        </span>
+        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
+      </Link>
     </div>
   );
 }
