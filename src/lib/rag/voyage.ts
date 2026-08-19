@@ -19,16 +19,37 @@ export const EMBED_MODEL = "voyage-4";
 export const EMBED_DIM = 1024;
 /** 한 요청에 넣을 텍스트 수. API 한도(1000)보다 훨씬 보수적으로 — 토큰 한도가 먼저 걸린다. */
 const BATCH = 64;
+/** 속도 제한에 걸렸을 때 이보다 잘게 쪼개지는 않는다 */
+const MIN_BATCH = 4;
+/** 429를 몇 번까지 참고 다시 시도할지 */
+const MAX_RETRIES = 3;
+/** Retry-After 헤더가 없을 때 기다릴 시간(ms). 결제수단 없는 계정이 3 RPM이라 20초. */
+const DEFAULT_RETRY_MS = 20_000;
+/** 한 번에 이보다 오래 기다리지는 않는다 — 요청이 통째로 묶여 버리면 안 되니까 */
+const MAX_RETRY_MS = 60_000;
 
 export class EmbedError extends Error {
-  constructor(message: string) {
+  /** 속도·토큰 제한이 원인인지. 이 경우에만 배치를 쪼개 다시 시도할 값어치가 있다. */
+  readonly rateLimited: boolean;
+
+  constructor(message: string, rateLimited = false) {
     super(message);
     this.name = "EmbedError";
+    this.rateLimited = rateLimited;
   }
 }
 
 export function hasVoyageKey(): boolean {
   return !!process.env.VOYAGE_API_KEY?.trim();
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 429일 때 얼마나 기다릴지. 서버가 알려주면 그 값을, 아니면 기본값을 쓴다. */
+function retryDelayMs(res: Response): number {
+  const header = Number(res.headers.get("retry-after"));
+  const ms = Number.isFinite(header) && header > 0 ? header * 1000 : DEFAULT_RETRY_MS;
+  return Math.min(ms, MAX_RETRY_MS);
 }
 
 /**
@@ -37,30 +58,51 @@ export function hasVoyageKey(): boolean {
  * `inputType`은 Voyage가 앞에 붙이는 안내문을 바꾼다. 색인할 때는 `document`,
  * 검색할 때는 `query`여야 서로 맞는 공간에 놓인다 — 한쪽만 쓰면 검색 품질이 눈에 띄게 떨어진다.
  */
-async function embedBatch(texts: string[], inputType: "document" | "query"): Promise<number[][]> {
+async function embedBatch(
+  texts: string[],
+  inputType: "document" | "query",
+  deadlineAt?: number,
+): Promise<number[][]> {
   const apiKey = process.env.VOYAGE_API_KEY?.trim();
   if (!apiKey) throw new EmbedError("VOYAGE_API_KEY가 설정되어 있지 않습니다.");
 
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      input: texts,
-      model: EMBED_MODEL,
-      input_type: inputType,
-      output_dimension: EMBED_DIM,
-    }),
-  });
+  let res!: Response;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: texts,
+        model: EMBED_MODEL,
+        input_type: inputType,
+        output_dimension: EMBED_DIM,
+      }),
+    });
+
+    // 속도 제한은 실패가 아니라 "천천히 하라"는 뜻이라 기다렸다 다시 건다.
+    // 결제수단을 등록하지 않은 계정은 3 RPM / 10K TPM이라 색인 중에 흔히 걸린다.
+    if (res.status !== 429 || attempt >= MAX_RETRIES) break;
+
+    // 기다릴 시간이 남아 있을 때만 기다린다. 호출부가 준 시간을 넘겨 가며
+    // 붙잡고 있으면 서버리스 요청이 통째로 타임아웃된다.
+    const wait = retryDelayMs(res);
+    if (deadlineAt !== undefined && Date.now() + wait > deadlineAt) break;
+    await sleep(wait);
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new EmbedError(
       res.status === 401
         ? "Voyage API 키가 거부되었습니다. VOYAGE_API_KEY를 확인해 주세요."
-        : `임베딩 요청이 실패했습니다 (HTTP ${res.status}). ${detail.slice(0, 200)}`,
+        : res.status === 429
+          ? "Voyage 속도 제한에 걸렸습니다. 결제수단을 등록하지 않은 계정은 분당 3회 / 1만 토큰으로 " +
+            "묶입니다(무료 사용량은 그대로). dash.voyageai.com 결제 페이지에서 카드를 등록하면 풀립니다."
+          : `임베딩 요청이 실패했습니다 (HTTP ${res.status}). ${detail.slice(0, 200)}`,
+      res.status === 429,
     );
   }
 
@@ -84,11 +126,39 @@ async function embedBatch(texts: string[], inputType: "document" | "query"): Pro
   return out;
 }
 
-/** 색인할 문서들을 임베딩한다(배치로 나눠 보낸다). */
-export async function embedDocuments(texts: string[]): Promise<number[][]> {
+/**
+ * 속도 제한에 걸리면 배치를 절반으로 쪼개 다시 시도한다.
+ *
+ * 429의 원인이 분당 **요청 수**면 기다리는 걸로 풀리지만(embedBatch가 이미 한다),
+ * 분당 **토큰 수**면 요청 하나가 한도보다 커서 아무리 기다려도 통과하지 못한다.
+ * 그때는 요청을 작게 만드는 것 말고 방법이 없다.
+ */
+async function embedWithSplit(texts: string[], deadlineAt?: number): Promise<number[][]> {
+  try {
+    return await embedBatch(texts, "document", deadlineAt);
+  } catch (err) {
+    const splittable =
+      err instanceof EmbedError && err.rateLimited && texts.length > MIN_BATCH;
+    if (!splittable || (deadlineAt !== undefined && Date.now() >= deadlineAt)) throw err;
+
+    const mid = Math.ceil(texts.length / 2);
+    return [
+      ...(await embedWithSplit(texts.slice(0, mid), deadlineAt)),
+      ...(await embedWithSplit(texts.slice(mid), deadlineAt)),
+    ];
+  }
+}
+
+/**
+ * 색인할 문서들을 임베딩한다(배치로 나눠 보낸다).
+ *
+ * `deadlineAt`(epoch ms)을 주면 그 시각 뒤로는 재시도·분할을 멈추고 예외를 던진다.
+ * 호출부는 이미 저장한 것을 남기고 나머지를 다음 회차로 넘기면 된다.
+ */
+export async function embedDocuments(texts: string[], deadlineAt?: number): Promise<number[][]> {
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += BATCH) {
-    out.push(...(await embedBatch(texts.slice(i, i + BATCH), "document")));
+    out.push(...(await embedWithSplit(texts.slice(i, i + BATCH), deadlineAt)));
   }
   return out;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   dateKeyInTimeZone,
   floatingDateKey,
@@ -7,6 +7,27 @@ import {
   toFloatingDate,
 } from "./timezone";
 import { formatDayLabel, isOverdue } from "./format-date";
+
+/**
+ * 시계를 고정한다.
+ *
+ * `formatDayLabel`은 오늘·내일·어제를 상대 표현으로 바꾸므로, 날짜를 박아 둔 단언은
+ * 실행하는 날에 따라 결과가 달라진다(실제로 8/19에 "8월 20일"이 "내일"로 나와 깨졌다).
+ * 여기 있는 검증의 관심사는 "라벨이 **UTC 달력 날짜**를 따르는가"이지 상대 표현이 아니므로,
+ * 상대 표현 구간에서 멀리 떨어진 시각에 고정해 둔다. 상대 표현 자체는 아래에서 따로 본다.
+ */
+// 정오(UTC)로 잡는다 — 실행 머신 타임존이 UTC±11 안이면 로컬 날짜도 5/15라
+// 아래 오늘/내일 단언이 타임존 때문에 흔들리지 않는다.
+const FIXED_NOW = new Date("2026-05-15T12:00:00.000Z");
+
+beforeAll(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("떠 있는 날짜 왕복", () => {
   it("로컬 달력 날짜 → UTC 자정 → 같은 달력 날짜", () => {
@@ -56,6 +77,14 @@ describe("종일 값 표시 — 어느 타임존에서 보든 같은 날짜", ()
 
   it("라벨이 UTC 날짜를 따른다", () => {
     expect(formatDayLabel(floating, true)).toContain("8월 20일");
+  });
+
+  it("오늘·내일도 UTC 날짜로 판정한다", () => {
+    // 시계는 2026-05-15T12:00Z에 고정돼 있다.
+    // 종일 값은 UTC 자정으로 저장되므로 UTC 연·월·일로 읽어야 오늘/내일이 맞는다.
+    expect(formatDayLabel(new Date("2026-05-15T00:00:00.000Z"), true)).toBe("오늘");
+    expect(formatDayLabel(new Date("2026-05-16T00:00:00.000Z"), true)).toBe("내일");
+    expect(formatDayLabel(new Date("2026-05-14T00:00:00.000Z"), true)).toBe("어제");
   });
 });
 
