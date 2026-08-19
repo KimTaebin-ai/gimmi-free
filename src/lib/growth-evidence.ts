@@ -20,6 +20,13 @@ export interface SourceForPrompt {
   tags: string[];
   /** 태스크 한 줄 메모 / 일정 설명 / 블로그 글 요약 */
   note: string | null;
+  /**
+   * 본인이 직접 쓴 긴 글(지금은 블로그 본문).
+   *
+   * 요약(`note`)과 나누는 이유는 세기가 다르기 때문이다. 200자 요약은 "이런 걸 썼구나"까지지만,
+   * 본문은 무엇을 어떻게 이해했는지가 문장으로 남아 있어 성장 판정의 근거가 된다.
+   */
+  body: string | null;
   entries: EntryForPrompt[];
 }
 
@@ -31,15 +38,24 @@ export const ORIGIN_LABEL: Record<SourceForPrompt["origin"], string> = {
 
 /** 제목만 있고 아무 내용도 없는 항목 — 모델이 단정하지 않도록 표시해 준다 */
 export function isWeakEvidence(s: SourceForPrompt): boolean {
-  return s.entries.length === 0 && !s.note;
+  return s.entries.length === 0 && !s.note && !s.body;
 }
 
 /**
- * 근거의 세기. 기록(메모/스크립트/느낀 점)이 붙은 항목이 가장 강하고,
- * 요약이라도 있는 항목이 그다음, 제목만 있는 항목이 가장 약하다.
+ * 근거의 세기. 본인이 남긴 글이 많을수록 세다.
+ *
+ * 점수 배분의 근거:
+ *  - **기록(10점)** — 태스크·일정에 직접 남긴 메모/스크립트/느낀 점. 가장 직접적인 증거다.
+ *  - **본문(6점)** — 발행한 블로그 글 전문. 남에게 설명할 수 있을 만큼 정리했다는 신호라
+ *    무게가 크다. 다만 기록만큼 그 활동에 밀착돼 있지는 않아 한 단계 아래에 둔다.
+ *  - **요약(1점)** — 한 줄 메모나 일정 설명. 있다는 것 정도의 의미.
+ *
+ * 본문을 따로 세는 게 중요하다. 예전에는 블로그 글도 요약만 있어 1점이었는데, 그러면
+ * 두 달치를 정리한 회고 글이 "Flight to 서울" 같은 일정과 같은 순위가 되어 프롬프트
+ * 뒤쪽으로 밀렸다. 실제로 그렇게 밀리고 있었다.
  */
 export function evidenceStrength(s: SourceForPrompt): number {
-  return s.entries.length * 10 + (s.note ? 1 : 0);
+  return s.entries.length * 10 + (s.body ? 6 : 0) + (s.note ? 1 : 0);
 }
 
 /** 강한 근거가 프롬프트 앞쪽에 오도록 정렬 */

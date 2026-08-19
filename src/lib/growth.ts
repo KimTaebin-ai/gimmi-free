@@ -10,7 +10,7 @@ import {
   type EntryForPrompt,
   type SourceForPrompt,
 } from "@/lib/growth-evidence";
-import { buildProbes, mergeHits } from "@/lib/rag/retrieval-plan";
+import { balanceByPeriod, buildProbes, mergeHits } from "@/lib/rag/retrieval-plan";
 import { searchByVector, type RetrievedChunk } from "@/lib/rag/search";
 import { embedQueries, hasVoyageKey } from "@/lib/rag/voyage";
 
@@ -20,10 +20,14 @@ const LOOKBACK_DAYS = 90;
 const MAX_TASKS = 120;
 /** 기록 하나당 넣을 최대 길이 — 긴 강의 스크립트는 앞부분만 */
 const MAX_ENTRY_CHARS = 2000;
+/** 블로그 본문은 기록보다 길게 넣는다 — 회고 글 한 편이 그 기간의 핵심 근거라서 */
+const MAX_BODY_CHARS = 6000;
 /** 탐침 하나가 가져올 블로그 본문 대목 수 */
 const HITS_PER_PROBE = 5;
 /** 탐침 결과를 합친 뒤 프롬프트에 실을 최대 대목 수 */
 const MAX_EXCERPTS = 24;
+/** 그중 기간 밖(예전에 쓴) 글에서 올 수 있는 최대 수 — 조연 자리만 준다 */
+const MAX_OUTSIDE_EXCERPTS = 8;
 /**
  * 이보다 안 닮은 대목은 넣지 않는다 — 아무 대목이나 실리면 모델이 엉뚱한 결론을 낸다.
  *
@@ -56,6 +60,9 @@ const SYSTEM_PROMPT = `당신은 사용자의 기록을 읽고 성장을 정리�
 - 자료 뒤에 "블로그 본문에서 찾은 대목"이 붙을 수 있습니다. 이건 글 전문이 아니라
   검색으로 뽑아 온 **일부**입니다. 거기 적힌 내용은 본인이 직접 쓴 말이니 강한 근거로
   쓰되, 대목에 없는 내용을 글 전체에 있었다고 넘겨짚지 마세요. 앞뒤가 잘려 있을 수 있습니다.
+  - "이 기간 이전에 쓴 글"로 표시된 대목은 **이번 기간의 성장이 아닙니다.** 그건 이미
+    할 수 있던 것을 보여 주는 자료이니, 같은 내용이 이번 기간에 또 나왔다면 새로운
+    성장이 아니라고 판단하는 근거로 쓰세요.
 - 한국어로, 담백하게 씁니다. 칭찬이나 격려보다 정확한 관찰이 필요합니다.
 - 기록이 빈약하면 gained를 비우고 그 사실을 headline에 적으세요.`;
 
@@ -71,6 +78,7 @@ function renderSources(sources: SourceForPrompt[]): string {
         parts.push(
           `${t.origin === "blog" ? "글 요약" : "메모"}: ${t.note.slice(0, MAX_ENTRY_CHARS)}`,
         );
+      if (t.body) parts.push(`글 본문:\n${t.body.slice(0, MAX_BODY_CHARS)}`);
       for (const e of t.entries) {
         const label =
           { note: "메모", script: "스크립트/강의 내용", reflection: "느낀 점", link: "참고 자료" }[
@@ -86,17 +94,20 @@ function renderSources(sources: SourceForPrompt[]): string {
 }
 
 /** 검색으로 뽑아 온 블로그 본문 대목들 */
-function renderExcerpts(hits: RetrievedChunk[]): string {
+function renderExcerpts(hits: RetrievedChunk[], periodStart: Date): string {
   if (hits.length === 0) return "";
 
   const body = hits
     .map((h, i) => {
       const date = h.occurredAt.toISOString().slice(0, 10);
-      return `### 대목 ${i + 1} — ${h.title} (${date})\n${h.text}`;
+      // 기간 밖 글은 표시해 준다 — 이번 기간의 성장으로 오해하면 안 되고,
+      // 오히려 "예전부터 할 수 있던 것"을 가려내는 데 쓰여야 한다.
+      const mark = h.occurredAt < periodStart ? " · 이 기간 이전에 쓴 글" : "";
+      return `### 대목 ${i + 1} — ${h.title} (${date}${mark})\n${h.text}`;
     })
     .join("\n\n");
 
-  return `\n\n# 블로그 본문에서 찾은 대목\n\n아래는 위 글들의 본문 중 이 기간의 활동과 관련 있어 보이는 부분만 뽑아 온 것입니다.\n글 전문이 아니라 발췌이며, 앞뒤가 잘려 있을 수 있습니다.\n\n${body}`;
+  return `\n\n# 블로그 본문에서 찾은 대목\n\n아래는 발행한 글들의 본문 중 이 기간의 활동과 관련 있어 보이는 부분만 검색해 온 것입니다.\n글 전문이 아니라 발췌이며, 앞뒤가 잘려 있을 수 있습니다.\n\n${body}`;
 }
 
 export interface GrowthInput {
@@ -131,16 +142,24 @@ async function retrieveExcerpts(input: GrowthInput): Promise<RetrievedChunk[]> {
     const vectors = await embedQueries(probes);
 
     // 여기서부터는 API 없이 DB만 — 탐침이 몇 개든 비용이 늘지 않는다.
+    //
+    // 기간(since)으로 자르지 않는다. 글을 두 달에 한 편 쓰면 90일 창에 한 편밖에 안 들어와
+    // 검색할 코퍼스가 사실상 사라진다(실제로 19편 중 1편만 검색 대상이었다).
+    // 대신 발췌마다 날짜를 붙여, 기간 밖 글은 "예전부터 하던 것"을 가려내는 근거로 쓰게 한다.
     const results = await Promise.all(
       vectors.map((vector) =>
         searchByVector(input.userId, vector, {
           limit: HITS_PER_PROBE,
-          since: input.periodStart,
           minScore: MIN_EXCERPT_SCORE,
         }),
       ),
     );
-    return mergeHits(results, MAX_EXCERPTS);
+    // 넉넉히 모은 뒤(점수순) 기간 안/밖 비율을 맞춰 자른다
+    const merged = mergeHits(results, MAX_EXCERPTS * 3);
+    return balanceByPeriod(merged, input.periodStart, {
+      total: MAX_EXCERPTS,
+      maxOutside: MAX_OUTSIDE_EXCERPTS,
+    });
   } catch (err) {
     console.error("[growth] 블로그 본문 검색 실패 — 발췌 없이 진행합니다:", err);
     return [];
@@ -194,6 +213,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
       select: {
         title: true,
         summary: true,
+        content: true,
         category: true,
         tags: true,
         publishedAt: true,
@@ -225,6 +245,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     project: t.project?.name ?? null,
     tags: t.tags.map((x) => x.tag.name),
     note: t.note,
+    body: null,
     entries: t.entries,
   }));
 
@@ -235,6 +256,7 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     project: null,
     tags: [],
     note: e.description,
+    body: null,
     entries: byEvent.get(e.googleEventId) ?? [],
   }));
 
@@ -245,6 +267,8 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
     project: b.category,
     tags: b.tags,
     note: b.summary,
+    // 본문이 성장 판정의 진짜 근거다. 요약만 넣던 시절엔 글 한 편이 일정 한 줄과 같은 무게였다.
+    body: b.content,
     entries: [],
   }));
 
@@ -259,6 +283,30 @@ export async function collectGrowthInput(userId: string): Promise<GrowthInput> {
 }
 
 /**
+ * Claude에 보낼 본문을 만든다(검색은 여기서 일어나고 LLM 호출은 없다).
+ *
+ * 따로 떼어 둔 이유는 실제로 무엇이 프롬프트에 실리는지 눈으로 확인하기 위해서다.
+ * 성장 요약은 "왜 이 결론이 나왔는가"가 중요한 기능이라, 근거가 빠졌는지를
+ * 모델을 부르지 않고도 볼 수 있어야 한다.
+ */
+export async function buildGrowthPrompt(
+  input: GrowthInput,
+): Promise<{ prompt: string; excerpts: RetrievedChunk[] }> {
+  const period = `${input.periodStart.toISOString().slice(0, 10)} ~ ${input.periodEnd
+    .toISOString()
+    .slice(0, 10)}`;
+  const excerpts = await retrieveExcerpts(input);
+
+  const prompt =
+    `기간: ${period}\n` +
+    `아래는 이 기간의 태스크, Google 캘린더 일정, 발행한 블로그 글, 그리고 거기 남긴 기록입니다.\n` +
+    `이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n` +
+    `${renderSources(input.sources)}${renderExcerpts(excerpts, input.periodStart)}`;
+
+  return { prompt, excerpts };
+}
+
+/**
  * Claude로 성장 요약을 만든다. 구조화 출력(structured outputs)으로 스키마를 강제한다.
  * 반환값이 null이면 호출부에서 사유를 안내한다.
  */
@@ -268,22 +316,14 @@ export async function generateGrowthSummary(
   const client = getClaude();
   if (!client || input.sources.length === 0) return null;
 
-  const period = `${input.periodStart.toISOString().slice(0, 10)} ~ ${input.periodEnd
-    .toISOString()
-    .slice(0, 10)}`;
-  const excerpts = await retrieveExcerpts(input);
+  const { prompt } = await buildGrowthPrompt(input);
 
   const response = await client.messages.parse({
     model: CLAUDE_MODEL,
     max_tokens: 16000,
     system: SYSTEM_PROMPT,
     output_config: { format: zodOutputFormat(GrowthSummarySchema) },
-    messages: [
-      {
-        role: "user",
-        content: `기간: ${period}\n아래는 이 기간의 태스크, Google 캘린더 일정, 발행한 블로그 글, 그리고 거기 남긴 기록입니다.\n이 사람이 무엇을 할 수 있게 되었는지 정리해 주세요.\n\n${renderSources(input.sources)}${renderExcerpts(excerpts)}`,
-      },
-    ],
+    messages: [{ role: "user", content: prompt }],
   });
 
   // 안전 분류기가 거절하면 content가 비어 있을 수 있다 — 먼저 확인

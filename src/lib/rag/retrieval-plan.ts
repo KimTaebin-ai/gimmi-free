@@ -66,3 +66,29 @@ export function mergeHits(results: RetrievedChunk[][], cap: number): RetrievedCh
 
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, cap);
 }
+
+/**
+ * 기간 밖 글이 발췌를 뒤덮지 않게 조절한다.
+ *
+ * 검색을 기간으로 자르지 않는 대신(두 달에 한 편 쓰면 기간 안에 한 편밖에 없다),
+ * 예전 글이 점수만 높으면 발췌를 통째로 차지할 수 있다. 실제로 24건 중 19건이
+ * 기간 밖 글에서 나왔다.
+ *
+ * 기간 안 대목을 먼저 채우고, 남은 자리에만 기간 밖 대목을 넣되 그마저 상한을 둔다.
+ * 기간 밖 글은 "이건 예전부터 하던 것"을 가려내는 조연이지 주연이 아니기 때문이다.
+ * 각 그룹 안에서는 점수 순서를 그대로 지킨다.
+ */
+export function balanceByPeriod(
+  hits: RetrievedChunk[],
+  periodStart: Date,
+  opts: { total: number; maxOutside: number },
+): RetrievedChunk[] {
+  const inside = hits.filter((h) => h.occurredAt >= periodStart);
+  const outside = hits.filter((h) => h.occurredAt < periodStart);
+
+  const kept = inside.slice(0, opts.total);
+  const room = Math.min(opts.total - kept.length, opts.maxOutside);
+
+  // 최종 순서도 점수순으로 — 프롬프트 앞쪽에 강한 근거가 오도록
+  return [...kept, ...outside.slice(0, Math.max(0, room))].sort((a, b) => b.score - a.score);
+}
