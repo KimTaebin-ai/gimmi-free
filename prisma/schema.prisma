@@ -18,6 +18,10 @@ model User {
   emailVerified DateTime?
   timezone      String    @default("Asia/Seoul")
   settings      Json?
+  /// 저녁 알림을 마지막으로 보낸 날(**사용자 현지** 기준 "YYYY-MM-DD").
+  /// 알림 판정은 매시간 돌기 때문에, 하루에 한 번만 보내려면 보낸 날을 남겨야 한다.
+  /// 현지 날짜로 적는 이유는 시간대를 옮겨 다녀도 "그 사람의 하루"가 기준이어야 해서다.
+  lastReminderOn String?
 
   accounts       Account[]
   sessions       Session[]

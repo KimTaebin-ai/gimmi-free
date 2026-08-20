@@ -118,8 +118,9 @@ export function GoogleSettings({
             태스크를 Google 캘린더에 추가
           </Label>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            날짜가 있는 미완료 태스크를 Google 캘린더 일정으로 만듭니다.
-            완료하거나 날짜를 지우면 캘린더에서도 사라집니다.
+            날짜가 있는 태스크를 Google 캘린더 일정으로 만듭니다. 완료해도 일정은 남고
+            제목 앞에 ✓가 붙습니다 — 지난 날짜를 볼 때 필요한 건 한 일이니까요.
+            날짜를 지우면 캘린더에서도 사라집니다.
           </p>
         </div>
         <Switch

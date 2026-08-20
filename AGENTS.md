@@ -50,6 +50,10 @@ src/
     growth-timeline.ts      # 저장된 요약들 → 월별 능력 타임라인(겹침 제거). 순수 함수
     growth-job.ts           # 요약 생성을 백그라운드로 돌리고 상태를 DB에 남긴다
     settings.ts             # User.settings(JSON) 읽기/쓰기
+    notify/
+      reminder.ts           # 저녁 알림 판단·문구(순수 함수). 종일/시간지정을 각자 기준으로
+      discord.ts            # 디스코드 웹훅 전송(URL 없으면 알림만 꺼진다)
+      daily-reminder.ts     # 현지 시각 판정 + 하루 한 번 발송
     google/
       tokens.ts             # access token 획득 + refresh(만료 시 Account 갱신)
       calendar.ts           # Calendar REST 클라이언트(fetch 기반, googleapis 미사용)
@@ -102,6 +106,7 @@ src/
 - `NAVER_BLOG_ID` — 네이버 블로그 아이디. 공개 목록만 읽으므로 인증 불필요.
 - `VOYAGE_API_KEY` — 블로그 본문 RAG 검색용 임베딩. Anthropic은 임베딩 API가 없어서 Voyage를 쓴다.
   없으면 블로그 읽기·저장은 그대로 되고 성장 요약에서 본문 발췌만 빠진다.
+- `DISCORD_WEBHOOK_URL` — 남은 태스크 저녁 알림용. 없으면 알림만 꺼지고 앱은 그대로.
 - `AUTH_URL` — 배포 시 프로덕션 URL(Vercel에선 보통 자동 감지)
 
 ## Google OAuth 주의사항
@@ -115,7 +120,11 @@ src/
 - 동기화 충돌은 last-write-wins + `lastSyncedAt` 비교. Google발 이벤트는 앱에서 읽기 전용(기본값).
 - 캘린더 동기화 방향:
   - **pull**: Google → `CalendarEvent` 캐시. `CalendarSyncState.syncToken`으로 증분, 410이면 전체 재동기화.
-  - **push**: `allDay=false`인 미완료 태스크만 Google 이벤트로. 종일 태스크는 캘린더를 덮으므로 제외.
+  - **push**: 날짜가 있는 태스크를 Google 이벤트로. **완료해도 지우지 않는다** —
+    캘린더는 계획표이면서 기록이고, 지난 날을 되짚을 때 필요한 건 "한 일"이다.
+    완료 표시는 제목 앞 `✓`로 한다(Google 캘린더에는 완료 개념이 없다).
+    단 **백필은 미완료만** 한다. 완료 건까지 소급 생성하면 예전에 끝낸 일이 어느 날
+    갑자기 캘린더에 우르르 생긴다.
     설정(`syncTasksToCalendar`)으로 끌 수 있고, 실패해도 태스크 저장은 성공하도록 `after()` + try/catch.
   - 태스크가 만든 이벤트는 pull 때 `Task.googleEventId`로 걸러 중복 저장하지 않는다.
 
@@ -197,6 +206,22 @@ src/
     종류 구분(내 태스크 vs 외부 일정)은 캘린더 아이콘이 맡는다.
   - 우선순위 색은 validate_palette로 라이트/다크 both all-pairs 통과를 확인했다.
     다크에서 기본 red(#e66767)는 amber와 ΔE 13으로 실패해 #d94a6a로 옮겼다 — 바꾸지 말 것.
+
+## 저녁 알림 (디스코드)
+
+- 남은 태스크가 있으면 **있는 곳의 18시**에 디스코드로 알린다. 시각은 설정에서 바꾼다.
+- **스케줄은 GitHub Actions가 맡는다**(`.github/workflows/daily-reminder.yml`, 매시간).
+  Vercel Hobby 크론은 **하루 한 번**만 허용되는데(더 잦은 식은 배포가 거부된다),
+  "있는 곳의 18시"는 서울과 시애틀이 서로 다른 순간이라 매시간 확인해야 한다.
+  Pro로 올리면 `0 * * * *`를 vercel.json에 넣고 이 워크플로를 지워도 된다.
+- 그래서 **판단은 앱이 한다.** 매시간 불려도 `User.lastReminderOn`(현지 날짜)을 보고
+  하루 한 번만 보낸다. 현지 날짜로 적는 이유는 시간대를 옮겨 다녀도 "그 사람의 하루"가
+  기준이어야 해서다.
+- 전송에 실패하면 **보낸 기록을 남기지 않는다** — 다음 시간에 다시 시도된다.
+  알림은 한 번 놓치면 그날은 끝이라 중복보다 누락이 아깝다.
+- 날짜 판정은 `reminder.ts`가 종일/시간지정을 **각자의 기준으로** 본다(`AGENTS.md` 날짜 규칙).
+  한 기준으로 묶으면 UTC 오프셋이 음수인 지역에서 하루 어긋난다.
+- 남은 태스크가 0건이면 보내지 않는다. 매일 오는 알림은 곧 안 읽히는 알림이 된다.
 
 ## 네이버 블로그 주의사항
 

@@ -59,6 +59,22 @@ export function dateKeyInTimeZone(instant: Date, timeZone: string): string {
   }).format(instant);
 }
 
+/**
+ * 그 지역의 지금 "시" (0–23).
+ *
+ * 저녁 알림처럼 **사용자가 있는 곳의 시계**를 기준으로 판단해야 하는 데 쓴다.
+ * 서버는 UTC로 돌지만 18시는 서울의 18시와 시애틀의 18시가 다르다.
+ */
+export function hourInTimeZone(instant: Date, timeZone: string): number {
+  const hour = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    hour12: false,
+  }).format(instant);
+  // "24"로 오는 구현이 있어 0으로 되돌린다
+  return Number(hour) % 24;
+}
+
 /** "Asia/Seoul" → "GMT+9" 같은 짧은 표기 (설정 화면 표시용) */
 export function timeZoneOffsetLabel(timeZone: string, at = new Date()): string {
   try {

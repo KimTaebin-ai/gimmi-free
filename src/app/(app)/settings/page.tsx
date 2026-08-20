@@ -1,5 +1,6 @@
 import { auth, signIn } from "@/auth";
 import { GoogleSettings } from "@/components/settings/google-settings";
+import { ReminderCard } from "@/components/settings/reminder-card";
 import { TimezoneCard } from "@/components/settings/timezone-card";
 
 export default async function SettingsPage() {
@@ -23,6 +24,7 @@ export default async function SettingsPage() {
 
       <TimezoneCard />
       <GoogleSettings reconnectAction={reconnectGoogle} />
+      <ReminderCard />
     </div>
   );
 }

@@ -7,6 +7,11 @@ export interface AppSettings {
   /** 종일 태스크도 올릴지. 끄면 시간이 지정된 태스크만 올라간다. */
   syncAllDayTasks: boolean;
 
+  /** 남은 태스크가 있을 때 저녁에 디스코드로 알릴지 */
+  discordReminder: boolean;
+  /** 알릴 시각(0-23). **사용자가 있는 곳의 시계** 기준. */
+  reminderHour: number;
+
   /** 체성분 목표선 (차트에 점선으로 표시). null이면 표시 안 함 */
   goalWeightKg: number | null;
   goalMuscleKg: number | null;
@@ -16,6 +21,8 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   syncTasksToCalendar: true,
   syncAllDayTasks: true,
+  discordReminder: true,
+  reminderHour: 18,
   goalWeightKg: null,
   goalMuscleKg: null,
   goalBodyFatPct: null,

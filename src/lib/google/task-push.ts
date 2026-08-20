@@ -25,12 +25,24 @@ interface PushableTask {
 
 /**
  * Google 이벤트로 내보낼 대상인지.
- * 날짜가 있는 미완료 태스크. 종일 태스크 포함 여부는 설정으로 결정한다.
+ *
+ * 날짜가 있으면 대상이다. **완료 여부는 보지 않는다** — 완료했다고 캘린더에서 지우면
+ * 그날 무엇을 했는지가 사라진다. 캘린더는 계획표이면서 동시에 기록이고,
+ * 지난 날짜를 되짚을 때 필요한 건 "하기로 했던 것"이 아니라 "한 것"이다.
+ * 대신 제목에 표시를 붙여 완료된 일임을 알 수 있게 한다(`buildPayload`).
  */
 function isEligible(task: PushableTask, allowAllDay: boolean): boolean {
-  if (task.status !== "todo") return false;
   if (!(task.startAt ?? task.dueAt)) return false;
   return allowAllDay || !task.allDay;
+}
+
+/** 완료 표시. Google 캘린더에는 완료 개념이 없어서 제목으로 나타내는 수밖에 없다. */
+const DONE_PREFIX = "✓ ";
+
+function titleFor(task: PushableTask): string {
+  // 이미 붙어 있으면 또 붙이지 않는다(다시 push될 때 ✓✓ 가 되지 않도록)
+  const bare = task.title.startsWith(DONE_PREFIX) ? task.title.slice(DONE_PREFIX.length) : task.title;
+  return task.status === "done" ? `${DONE_PREFIX}${bare}` : bare;
 }
 
 function buildPayload(task: PushableTask): EventWritePayload {
@@ -44,7 +56,7 @@ function buildPayload(task: PushableTask): EventWritePayload {
       Math.max(rawEnd.getTime(), start.getTime()) + 86400000,
     );
     return {
-      summary: task.title,
+      summary: titleFor(task),
       description: task.note ?? undefined,
       start: { date: floatingDateKey(start) },
       end: { date: floatingDateKey(endExclusive) },
@@ -56,7 +68,7 @@ function buildPayload(task: PushableTask): EventWritePayload {
     end = new Date(start.getTime() + DEFAULT_DURATION_MS);
   }
   return {
-    summary: task.title,
+    summary: titleFor(task),
     description: task.note ?? undefined,
     start: { dateTime: start.toISOString() },
     end: { dateTime: end.toISOString() },
@@ -85,7 +97,7 @@ async function pushOne(
   allowAllDay: boolean,
 ): Promise<void> {
   if (!isEligible(task, allowAllDay)) {
-    // 조건에서 벗어났으면(완료/날짜 제거/설정 변경) 캘린더에서 내린다
+    // 조건에서 벗어났으면(날짜 제거/설정 변경) 캘린더에서 내린다
     if (task.googleEventId) {
       await deleteEvent(accessToken, task.googleEventId);
       await prisma.task.update({
@@ -134,6 +146,8 @@ export async function backfillTaskEvents(
   const settings = await getSettings(userId);
   if (!settings.syncTasksToCalendar) return { pushed: 0, failed: 0 };
 
+  // 백필은 **미완료만** 한다. 완료 태스크까지 소급해 만들면 예전에 끝낸 일이
+  // 어느 날 갑자기 캘린더에 우르르 생긴다. 완료해도 남는 건 이미 올라간 이벤트다.
   const tasks = await prisma.task.findMany({
       where: {
         userId,

@@ -1,0 +1,31 @@
+# 저녁 알림을 매시간 깨워 준다.
+#
+# Vercel Hobby 크론은 **하루 한 번**만 허용된다(더 잦은 식은 배포가 거부된다).
+# 그런데 "있는 곳의 18시"에 울리려면 매시간 확인해야 한다 — 서울의 18시와 시애틀의
+# 18시는 UTC로 다른 순간이고, 이동하면 그 순간도 바뀐다. 그래서 스케줄만 여기서 맡고
+# 판단은 앱이 한다(하루 한 번만 보내도록 앱이 직접 막는다).
+#
+# 필요한 것(Settings → Secrets and variables → Actions):
+#   APP_URL      예: https://gimmi-free-k2g2.vercel.app
+#   CRON_SECRET  Vercel 환경변수와 같은 값
+name: daily-reminder
+
+on:
+  schedule:
+    # 매시 정각(UTC). GitHub 스케줄은 몇 분 늦을 수 있는데, 저녁 알림에는 문제가 없다.
+    - cron: "0 * * * *"
+  workflow_dispatch: # 손으로 한 번 돌려 보고 싶을 때
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 알림 확인 요청
+        run: |
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/daily-reminder")
+          echo "HTTP $code"
+          cat /tmp/out.json
+          echo
+          test "$code" = "200"
