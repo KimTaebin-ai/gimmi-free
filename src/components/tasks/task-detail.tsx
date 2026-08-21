@@ -38,9 +38,12 @@ import type { TaskWithRelations } from "@/lib/task-types";
 export function TaskDetail({
   task,
   onClose,
+  onLocalUpdate,
 }: {
   task: TaskWithRelations;
   onClose: () => void;
+  /** 수정한 필드가 화면에 즉시 반영되도록 상세 패널이 들고 있는 사본에도 같이 반영한다. */
+  onLocalUpdate?: (fields: Partial<TaskWithRelations>) => void;
 }) {
   const update = useUpdateTask();
   const del = useDeleteTask();
@@ -53,8 +56,12 @@ export function TaskDetail({
   const [tagsText, setTagsText] = useState(task.tags.map((t) => t.tag.name).join(", "));
   const [subTitle, setSubTitle] = useState("");
 
-  const patch = (input: Parameters<typeof update.mutate>[0]["input"]) =>
+  const patch = (input: Parameters<typeof update.mutate>[0]["input"]) => {
+    const fields = { ...input };
+    delete fields.tagNames; // 태그는 관계라 로컬 패치 대상이 아니다
+    onLocalUpdate?.(fields);
     update.mutate({ id: task.id, input });
+  };
 
   // 날짜 선택기는 로컬 Date를 주고받는다. 종일 값은 떠 있는 날짜(UTC 자정)로
   // 저장해야 타임존이 바뀌어도 날짜가 밀리지 않는다. (lib/timezone.ts 참고)
@@ -125,7 +132,14 @@ export function TaskDetail({
         <div className="flex items-center gap-2">
           <Checkbox
             checked={task.status === "done"}
-            onCheckedChange={(v) => toggle.mutate({ id: task.id, done: v === true })}
+            onCheckedChange={(v) => {
+              const done = v === true;
+              onLocalUpdate?.({
+                status: done ? "done" : "todo",
+                completedAt: done ? new Date() : null,
+              });
+              toggle.mutate({ id: task.id, done });
+            }}
             className="rounded-full"
           />
           {(() => {

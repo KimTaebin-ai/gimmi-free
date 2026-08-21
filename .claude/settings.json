@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --no-install vercel --version)",
+      "Bash(awk -F'=' '{print $1\": \"length\\($0\\)\" chars total\"}' .env)",
+      "Bash(node -e ' *)",
+      "Bash(command -v nvm)",
+      "Bash([ -s \"$HOME/.nvm/nvm.sh\" ])",
+      "Bash(command -v fnm)",
+      "Bash(command -v volta)",
+      "Bash(command -v brew)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(gh auth *)",
+      "Bash(gh secret *)",
+      "Bash(gh run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\\\\n\" https://gimmi-free-k2g2.vercel.app/login)",
+      "Bash(git remote *)",
+      "Bash(gh workflow *)",
+      "Bash(npx --yes vercel@latest whoami)",
+      "Bash(npx --yes vercel@latest env ls)",
+      "Bash(npx --yes vercel@latest redeploy --help)",
+      "Bash(npx --yes vercel@latest ls --prod)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}

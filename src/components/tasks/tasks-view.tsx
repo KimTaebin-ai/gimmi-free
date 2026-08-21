@@ -27,6 +27,7 @@ import { useEventsInRange } from "@/hooks/use-calendar";
 import { CalendarItemDetail } from "@/components/calendar/item-detail";
 import { eventToCalendarItem } from "@/lib/calendar-types";
 import type { CalendarEventLite } from "@/lib/calendar-types";
+import type { TaskWithRelations } from "@/lib/task-types";
 
 export function TasksView() {
   // 기본은 '전체' — 오늘 할 일만 보는 것보다 전체를 조망하는 쪽이 기본값으로 낫다.
@@ -55,7 +56,14 @@ export function TasksView() {
   // 날짜 리스트에서는 같은 그룹 안에서만 이동한다(날짜 변경은 상세에서).
   const reorderable = !(selection.type === "smart" && selection.key === "done");
 
-  const selectedTask = tasks?.find((t) => t.id === selectedTaskId) ?? null;
+  const liveTask = tasks?.find((t) => t.id === selectedTaskId) ?? null;
+  // 상세 패널에서 날짜 등을 고쳐 현재 필터(예: '오늘') 밖으로 나가면 목록에서
+  // 바로 빠지는데, 그때마다 패널이 닫혀버리면 방금 고친 값도 못 보고 사라진 것처럼
+  // 보인다. 목록에 남아있는 동안은 최신값을 따라가다가, 빠진 뒤에는 마지막으로
+  // 알던 값을 계속 보여준다.
+  const [pinnedTask, setPinnedTask] = useState<TaskWithRelations | null>(null);
+  if (liveTask && liveTask !== pinnedTask) setPinnedTask(liveTask);
+  const selectedTask = liveTask ?? (pinnedTask?.id === selectedTaskId ? pinnedTask : null);
 
   const heading = (() => {
     if (selection.type === "smart")
@@ -162,6 +170,9 @@ export function TasksView() {
             key={selectedTask.id}
             task={selectedTask}
             onClose={() => setSelectedTaskId(null)}
+            onLocalUpdate={(fields) =>
+              setPinnedTask((p) => (p ? { ...p, ...fields } : p))
+            }
           />
         </aside>
       )}
