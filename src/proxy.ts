@@ -12,7 +12,7 @@ export default auth((req) => {
     return Response.redirect(new URL("/login", req.nextUrl));
   }
   if (isLoggedIn && isLoginPage) {
-    return Response.redirect(new URL("/today", req.nextUrl));
+    return Response.redirect(new URL("/", req.nextUrl));
   }
 });
 
